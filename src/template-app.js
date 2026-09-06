@@ -101,6 +101,12 @@ function renderActivity(rows) {
     const time = document.createElement('span'); time.style.cssText = 'margin-left:auto;color:var(--tx3);white-space:nowrap'; time.textContent = 'recently'; item.append(dot, text, time); return item;
   }));
 }
+function renderEntities(sectionId, rows) {
+  const host = document.querySelector(`#sec-${sectionId}`); if (!host) return;
+  let list = host.querySelector('.nexus-live-list');
+  if (!list) { list = document.createElement('div'); list.className = 'nexus-live-list mb-3'; host.querySelector('.container-fluid, .row')?.prepend(list); }
+  list.replaceChildren(...rows.slice(0, 20).map(row => { const item = document.createElement('div'); item.className = 'd-flex justify-content-between align-items-center p-3 mb-2'; item.style.cssText = 'background:var(--bg3);border:1px solid var(--bd);border-radius:10px'; const name = document.createElement('span'); name.textContent = row.name || row.provider || row.title || 'Untitled'; const meta = document.createElement('small'); meta.style.color = 'var(--tx3)'; meta.textContent = row.status || row.trigger || 'Active'; item.append(name, meta); return item; }));
+}
 async function callBusiness(body) {
   const token = await auth.currentUser?.getIdToken(); if (!token) throw new Error('AUTH');
   const response = await fetch('/api/business', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
@@ -127,6 +133,7 @@ function subscribe(user) {
   resetStats();
   const watch = (name, callback) => { const stop = onSnapshot(query(collection(db, 'users', user.uid, name), orderBy('createdAt', 'desc'), limit(100)), snap => { if (generation !== run) return; const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); updateStats(name, rows); callback(rows); }, error => { if (generation === run) console.warn(`${name} unavailable`, error.code); }); stops.push(stop); };
   watch('leads', rows => renderActivity(rows)); watch('tasks', rows => renderActivity(rows)); watch('runs', rows => renderActivity(rows));
+  watch('agents', rows => renderEntities('agents', rows)); watch('automations', rows => renderEntities('automations', rows)); watch('integrations', rows => renderEntities('integrations', rows));
   wireWorkspace();
 }
 
