@@ -198,18 +198,29 @@ evento → función de servidor → OpenAI para interpretar → validación de c
 
 Casos apropiados: clasificar prospectos, extraer campos, resumir conversaciones y preparar respuestas para revisión humana. No dejes que el modelo escriba directamente en Firestore, cambie permisos, envíe pagos o llame servicios arbitrarios. La función debe validar la salida y elegir una acción de una lista cerrada.
 
-### 5.2 Crear la clave
+### 5.2 Crear la clave y guardarla en Vercel
 
 1. Entra al [OpenAI API dashboard](https://platform.openai.com/).
 2. Selecciona el proyecto que pagará el uso.
 3. Crea una API key con el alcance mínimo disponible.
 4. Configura límites de gasto y revisa el uso.
-5. Guarda la clave únicamente como variable de servidor:
+5. No pegues la clave en `.env.example`, `.env.local`, GitHub ni en el navegador. Guárdala directamente en Vercel como variable de servidor desde **Project settings → Environment Variables**:
 
 ```env
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-6-astra
 ```
+
+En el repositorio solo deben quedar los nombres vacíos de [`.env.example`](.env.example). En Vercel crea `OPENAI_API_KEY` como **Sensitive**, selecciona Production y Preview según corresponda, y crea `OPENAI_MODEL` como variable normal. Si usas la CLI, los comandos solicitan el valor de forma interactiva:
+
+```sh
+npx --yes vercel env add OPENAI_API_KEY production
+npx --yes vercel env add OPENAI_API_KEY preview
+npx --yes vercel env add OPENAI_MODEL production
+npx --yes vercel env add OPENAI_MODEL preview
+```
+
+Después de guardar o cambiar cualquiera de estas variables, crea un nuevo deployment. La función debe leerlas con `process.env`; el frontend no debe leerlas.
 
 No uses `VITE_OPENAI_API_KEY`. Una variable que comienza por `VITE_` puede terminar en el bundle del navegador. No pongas la clave en GitHub, `index.html`, `src/app.js` ni en datos enviados por el cliente.
 
@@ -223,10 +234,10 @@ Cuando activemos la primera función de IA, instala el SDK:
 npm install openai
 ```
 
-Agrega las variables a Vercel para Production y Preview. Puedes reflejar los nombres en `.env.example`, pero nunca escribas el valor:
+Agrega las variables a Vercel para Production y Preview. Puedes reflejar únicamente los nombres vacíos en `.env.example`, pero nunca escribas el valor real:
 
 ```env
-# Server only; no lo usa el flujo base todavía
+# Server only; configúralo en Vercel; el flujo base todavía no lo consume
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-6-astra
 ```
