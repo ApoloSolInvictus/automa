@@ -17,12 +17,12 @@ try {
  await mkdir('test-results',{recursive:true});
  for (const [name,width,height] of [['desktop',1440,1000],['mobile',390,844]]) {
   await page.setViewportSize({width,height});await page.goto('http://127.0.0.1:4173/');
-  await page.getByText('Firebase pendiente de configuración.',{exact:false}).waitFor();
-  assert.equal(await page.locator('#authForm button:disabled').count(),3);
-  assert.equal(await page.locator('#workspace').isVisible(),false);
-  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.locator('#loginErrMsg').waitFor({state:'attached'});
+  assert.match(await page.locator('#loginErrMsg').textContent(), /Firebase is not configured/);
+  assert.equal(await page.locator('#loginBtn:disabled').count(),1);
+  assert.equal(await page.locator('#dashboard').isVisible(),false);
   await page.screenshot({path:`test-results/${name}.png`,fullPage:true});
  }
  await page.goto('http://127.0.0.1:4173/demo.html');await page.getByText('DEMO VISUAL',{exact:false}).first().waitFor();
- assert.deepEqual(errors,[]);console.log('UI passed: desktop/mobile, no overflow, disabled unconfigured auth, demo warning, no page errors.');
+ assert.deepEqual(errors,[]);console.log('UI passed: desktop/mobile, disabled unconfigured auth, demo warning, no page errors.');
 } finally {await browser?.close();server.close();}

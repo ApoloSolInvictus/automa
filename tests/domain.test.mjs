@@ -25,6 +25,13 @@ test('rejects array IDs instead of coercing them into document paths', () => {
  assert.throws(() => parseCommand({...lead,requestId:[lead.requestId]}));
  assert.throws(() => parseCommand({action:'updateTask',id:['abc'],status:'done'}));
 });
+test('validates OpenAI chat messages and bounded history', () => {
+ const parsed = parseCommand({action:'chat',message:' hello ',history:[{role:'user',content:'previous'}]});
+ assert.equal(parsed.message, 'hello');
+ assert.throws(() => parseCommand({action:'chat',message:'ok',history:[{role:'system',content:'no'}]}));
+ assert.throws(() => parseCommand({action:'chat',message:'ok',history:Array.from({length:21},()=>({role:'user',content:'x'}))}));
+ assert.throws(() => parseCommand({action:'chat',message:'',history:[]}));
+});
 test('API validates body size and malformed commands before connecting to services', async () => {
  for (const [body,status] of [[{},400],[{padding:'x'.repeat(13000)},413]]) {
   const res={setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}};

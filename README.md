@@ -18,12 +18,12 @@ La plantilla visual original de NexusAI se conserva en [`demo.html`](demo.html),
 | Automatización | Listo | Crea una tarea de seguimiento con vencimiento configurable |
 | Historial | Listo | Registra si la tarea fue creada u omitida |
 | Completar tareas | Listo | Completar y reabrir desde el dashboard |
-| IA | Preparada, no conectada | El flujo actual no necesita un modelo |
+| IA | Disponible opcionalmente | El chat del dashboard usa `/api/business` y OpenAI cuando Vercel tiene `OPENAI_API_KEY` |
 | WhatsApp, email, Slack, CRM y pagos | Pendiente | Requieren integraciones y credenciales adicionales |
 | Ejecución al vencer una tarea | Pendiente | La fecha se guarda; todavía no existe un cron que envíe mensajes |
 | Equipos y organizaciones | Pendiente | Esta versión tiene un espacio individual por usuario |
 
-La automatización no necesita Claude ni OpenAI para crear la tarea. El servidor aplica la regla y escribe en Firestore. Una IA se debe usar cuando el proceso necesite comprender lenguaje: clasificar un prospecto, resumir una conversación, extraer campos o preparar una respuesta. La IA propone o clasifica; el código mantiene los permisos, límites, reintentos, acciones y auditoría.
+La automatización no necesita Claude ni OpenAI para crear una tarea. El servidor aplica la regla y escribe en Firestore. El chat del dashboard sí puede usar OpenAI, pero solo desde la función de servidor y con `OPENAI_API_KEY` configurada. Una IA se debe usar cuando el proceso necesite comprender lenguaje: clasificar un prospecto, resumir una conversación, extraer campos o preparar una respuesta. La IA propone o clasifica; el código mantiene los permisos, límites, reintentos, acciones y auditoría.
 
 ## Requisitos
 
@@ -226,18 +226,12 @@ No uses `VITE_OPENAI_API_KEY`. Una variable que comienza por `VITE_` puede termi
 
 La guía oficial muestra el SDK JavaScript y `client.responses.create` en [OpenAI Developer quickstart](https://platform.openai.com/docs/quickstart/make-your-first-api-request). La documentación actual recomienda GPT-6 Astra para trabajo complejo; para equilibrar costo y capacidad consulta [Model guidance](https://developers.openai.com/api/docs/guides/latest-model) y confirma que el modelo esté habilitado en tu proyecto.
 
-### 5.3 Preparar el proyecto
+### 5.3 Activar el chat del dashboard
 
-Cuando activemos la primera función de IA, instala el SDK:
-
-```sh
-npm install openai
-```
-
-Agrega las variables a Vercel para Production y Preview. Puedes reflejar únicamente los nombres vacíos en `.env.example`, pero nunca escribas el valor real:
+El SDK `openai` ya está incluido en `package.json` y el endpoint `/api/business` acepta la acción `chat`. Agrega las variables a Vercel para Production y Preview. Puedes reflejar únicamente los nombres vacíos en `.env.example`, pero nunca escribas el valor real:
 
 ```env
-# Server only; configúralo en Vercel; el flujo base todavía no lo consume
+# Server only; configúralo en Vercel; lo usa el chat del dashboard
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-6-astra
 ```

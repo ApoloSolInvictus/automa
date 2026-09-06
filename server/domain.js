@@ -21,6 +21,15 @@ export function parseCommand(body) {
     if (typeof body.enabled !== 'boolean' || !Number.isInteger(body.hours) || body.hours < 1 || body.hours > 720) throw new InputError('Configuración inválida.');
     return { action: body.action, enabled: body.enabled, hours: body.hours };
   }
+  if (body.action === 'chat') {
+    const message = text(body.message, 'Mensaje', 4000);
+    if (!Array.isArray(body.history) || body.history.length > 20) throw new InputError('Historial inválido.');
+    const history = body.history.map(item => {
+      if (!item || !['user', 'assistant'].includes(item.role)) throw new InputError('Historial inválido.');
+      return { role: item.role, content: text(item.content, 'Mensaje', 4000) };
+    });
+    return { action: body.action, message, history };
+  }
   throw new InputError('Acción no admitida.');
 }
 export function planFollowUp(lead, settings, now) {

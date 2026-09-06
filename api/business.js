@@ -36,6 +36,18 @@ export default async function handler(req, res) {
       });
       return res.status(200).json({ ok: true });
     }
+    if (cmd.action === 'chat') {
+      if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'OpenAI no está configurado en Vercel.' });
+      const { default: OpenAI } = await import('openai');
+      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const response = await client.responses.create({
+        model: process.env.OPENAI_MODEL || 'gpt-6-astra',
+        store: false,
+        instructions: 'You are NexusAI, a concise business automation assistant. Answer in English. Discuss only support analytics, AI agents, workflow automation, and business metrics. Never claim to have executed an action. If asked to change data, explain that the user must use the dashboard action.',
+        input: [...cmd.history, { role: 'user', content: cmd.message }]
+      });
+      return res.status(200).json({ ok: true, reply: response.output_text || 'I could not generate a response.' });
+    }
     const result = await db.runTransaction(async tx => {
       const leadRef = root.collection('leads').doc(cmd.requestId);
       const existing = await tx.get(leadRef);
