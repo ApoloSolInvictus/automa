@@ -119,64 +119,10 @@ function setLoading(btnId, loading) {
     }
 }
 
-function doLogin() {
-    const email = document.getElementById('loginEmail').value.trim();
-    const pass = document.getElementById('loginPass').value;
-    document.getElementById('loginErr').style.display = 'none';
-    if (!email) return showErrLogin('Please enter your email address.');
-    if (!pass) return showErrLogin('Please enter your password.');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showErrLogin('Please enter a valid email address.');
-    if (pass.length < 6) return showErrLogin('Password must be at least 6 characters.');
-    setLoading('loginBtn', true);
-    setTimeout(() => {
-        setLoading('loginBtn', false);
-        const name = email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        loginSuccess({
-            name,
-            email,
-            plan: 'Pro Plan'
-        });
-    }, 900);
-}
-
-function doSignup() {
-    const name = document.getElementById('signupName').value.trim();
-    const email = document.getElementById('signupEmail').value.trim();
-    const pass = document.getElementById('signupPass').value;
-    document.getElementById('signupErr').style.display = 'none';
-    if (!name) return showErrSignup('Please enter your full name.');
-    if (!email) return showErrSignup('Please enter your email address.');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showErrSignup('Please enter a valid email address.');
-    if (pass.length < 8) return showErrSignup('Password must be at least 8 characters.');
-    setLoading('signupBtn', true);
-    setTimeout(() => {
-        setLoading('signupBtn', false);
-        loginSuccess({
-            name,
-            email,
-            plan: 'Starter (Trial)'
-        });
-    }, 1000);
-}
-
-function quickLogin(provider) {
-    const names = {
-        google: 'Alex Johnson',
-        github: 'Dev User'
-    };
-    const emails = {
-        google: 'user@gmail.com',
-        github: 'user@github.com'
-    };
-    // close offcanvas
-    bootstrap.Offcanvas.getInstance(document.getElementById('lofc'))?.hide();
-    setTimeout(() => loginSuccess({
-        name: names[provider],
-        email: emails[provider],
-        plan: 'Pro Plan'
-    }), 300);
-}
-
+// The original template is a visual demo, never an authentication flow.
+function doLogin() { location.href = '/'; }
+function doSignup() { location.href = '/'; }
+function quickLogin() { location.href = '/'; }
 function loginSuccess(user) {
     currentUser = user;
     chatHistory = [];
@@ -464,50 +410,9 @@ function updateChartColors() {
     });
 }
 
-/*  AI CHAT (Anthropic API)  */
-async function sendChat() {
-    const inp = document.getElementById('chatInp');
-    const msg = inp.value.trim();
-    if (!msg) return;
-    inp.value = '';
-    inp.style.height = 'auto';
-    appendMsg(msg, 'user');
-    chatHistory.push({
-        role: 'user',
-        content: msg
-    });
-    document.getElementById('chatSendBtn').disabled = true;
-    const typingId = appendTyping();
-    try {
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
-                max_tokens: 1000,
-                system: `You are NexusAI, an intelligent AI assistant built into the NexusAI business automation platform. The user is ${currentUser?.name || 'a user'} on the ${currentUser?.plan || 'Pro'} plan. You help with: AI agent performance, support ticket analytics, workflow automation suggestions, business metrics insights, and platform usage. Current platform stats: 24.8K conversations today, 98.2% resolution rate, 1.4s avg response, $18.2K monthly savings, 4 active agents. Be concise, professional, and data-driven. Use emojis sparingly.`,
-                messages: chatHistory
-            })
-        });
-        removeTyping(typingId);
-        if (res.ok) {
-            const data = await res.json();
-            const reply = data.content?.find(b => b.type === 'text')?.text || 'I could not generate a response.';
-            chatHistory.push({
-                role: 'assistant',
-                content: reply
-            });
-            appendMsg(reply, 'ai');
-        } else {
-            appendMsg('âš ï¸ Sorry, I had trouble connecting. Please check your API key or try again.', 'ai');
-        }
-    } catch (e) {
-        removeTyping(typingId);
-        appendMsg('âš ï¸ Network error. Please ensure you are connected to the internet.', 'ai');
-    }
-    document.getElementById('chatSendBtn').disabled = false;
+/*  VISUAL AI CHAT DEMO — no external model is connected  */
+function sendChat() {
+    appendMsg('Demo visual: el chat de IA no está conectado.', 'ai');
 }
 
 function appendMsg(text, role) {

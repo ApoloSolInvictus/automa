@@ -1,0 +1,28 @@
+import { chromium } from '@playwright/test';
+import { createServer } from 'node:http';
+import { readFile, mkdir } from 'node:fs/promises';
+import { resolve, extname, sep } from 'node:path';
+import assert from 'node:assert/strict';
+const root = resolve('dist');
+const server = createServer(async (req,res) => {
+ const path = resolve(root, '.' + (req.url.split('?')[0] === '/' ? '/index.html' : req.url.split('?')[0]));
+ if (!path.startsWith(root + sep)) {res.writeHead(403).end();return;}
+ try { const content=await readFile(path); res.setHeader('Content-Type', {'.html':'text/html; charset=utf-8','.js':'text/javascript','.css':'text/css','.woff2':'font/woff2'}[extname(path)] || 'application/octet-stream');res.end(content); } catch {res.writeHead(404).end();}
+});
+await new Promise(done=>server.listen(4173,'127.0.0.1',done));
+let browser;
+try {
+ browser = await chromium.launch({channel:'msedge',headless:true});
+ const page = await browser.newPage(); const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await mkdir('test-results',{recursive:true});
+ for (const [name,width,height] of [['desktop',1440,1000],['mobile',390,844]]) {
+  await page.setViewportSize({width,height});await page.goto('http://127.0.0.1:4173/');
+  await page.getByText('Firebase pendiente de configuración.',{exact:false}).waitFor();
+  assert.equal(await page.locator('#authForm button:disabled').count(),3);
+  assert.equal(await page.locator('#workspace').isVisible(),false);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.screenshot({path:`test-results/${name}.png`,fullPage:true});
+ }
+ await page.goto('http://127.0.0.1:4173/demo.html');await page.getByText('DEMO VISUAL',{exact:false}).first().waitFor();
+ assert.deepEqual(errors,[]);console.log('UI passed: desktop/mobile, no overflow, disabled unconfigured auth, demo warning, no page errors.');
+} finally {await browser?.close();server.close();}
