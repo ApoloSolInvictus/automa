@@ -30,6 +30,23 @@ export function parseCommand(body) {
     });
     return { action: body.action, message, history };
   }
+  if (body.action === 'saveEntity') {
+    const collection = text(body.collection, 'Colección', 40);
+    if (!['agents', 'automations', 'integrations'].includes(collection)) throw new InputError('Colección inválida.');
+    const id = body.id == null ? null : text(body.id, 'Identificador', 80);
+    if (!body.data || typeof body.data !== 'object' || Array.isArray(body.data)) throw new InputError('Datos inválidos.');
+    const data = {};
+    for (const [key, value] of Object.entries(body.data)) {
+      if (!/^[a-zA-Z][a-zA-Z0-9_]{0,30}$/.test(key) || typeof value !== 'string' || value.length > 500) throw new InputError('Datos inválidos.');
+      data[key] = value.trim();
+    }
+    if (!Object.keys(data).length) throw new InputError('Datos inválidos.');
+    return { action: body.action, collection, id, data };
+  }
+  if (body.action === 'saveProfile') {
+    const name = text(body.name, 'Nombre', 120);
+    return { action: body.action, name };
+  }
   throw new InputError('Acción no admitida.');
 }
 export function planFollowUp(lead, settings, now) {

@@ -48,6 +48,15 @@ export default async function handler(req, res) {
       });
       return res.status(200).json({ ok: true, reply: response.output_text || 'I could not generate a response.' });
     }
+    if (cmd.action === 'saveEntity') {
+      const ref = cmd.id ? root.collection(cmd.collection).doc(cmd.id) : root.collection(cmd.collection).doc();
+      await ref.set({ ...cmd.data, updatedAt: stamp, ...(cmd.id ? {} : { createdAt: stamp }) }, { merge: true });
+      return res.status(200).json({ ok: true, id: ref.id });
+    }
+    if (cmd.action === 'saveProfile') {
+      await root.collection('settings').doc('profile').set({ name: cmd.name, email: user.email || '', updatedAt: stamp }, { merge: true });
+      return res.status(200).json({ ok: true });
+    }
     const result = await db.runTransaction(async tx => {
       const leadRef = root.collection('leads').doc(cmd.requestId);
       const existing = await tx.get(leadRef);

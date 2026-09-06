@@ -101,11 +101,33 @@ function renderActivity(rows) {
     const time = document.createElement('span'); time.style.cssText = 'margin-left:auto;color:var(--tx3);white-space:nowrap'; time.textContent = 'recently'; item.append(dot, text, time); return item;
   }));
 }
+async function callBusiness(body) {
+  const token = await auth.currentUser?.getIdToken(); if (!token) throw new Error('AUTH');
+  const response = await fetch('/api/business', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Request failed.'); return data;
+}
+function modal(title, fields, onSave) {
+  const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#0009;z-index:3000;display:grid;place-items:center;padding:20px';
+  const box = document.createElement('div'); box.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:24px;width:min(520px,100%)';
+  box.innerHTML = `<h4 style="margin-bottom:18px">${title}</h4>` + fields.map(f => `<label class="olbl">${f.label}</label><input class="oinp mb-3" data-field="${f.key}" value="${(f.value || '').replace(/"/g,'&quot;')}" placeholder="${f.placeholder || ''}">`).join('') + '<div class="d-flex gap-2 justify-content-end"><button class="boc btn" data-cancel>Cancel</button><button class="bgrd btn" data-save>Save</button></div>';
+  wrap.append(box); document.body.append(wrap); box.querySelector('[data-cancel]').onclick = () => wrap.remove(); box.querySelector('[data-save]').onclick = async () => { const data = {}; box.querySelectorAll('[data-field]').forEach(i => data[i.dataset.field] = i.value.trim()); try { await onSave(data); wrap.remove(); } catch (e) { alert(e.message); } }; return wrap;
+}
+function wireWorkspace() {
+  const section = id => document.querySelector(`#sec-${id}`);
+  const add = (id, label, fields, collection) => { const btn = [...(section(id)?.querySelectorAll('button') || [])].find(b => b.textContent.includes(label)); btn?.addEventListener('click', () => modal(label, fields, data => callBusiness({ action: 'saveEntity', collection, data }))); };
+  add('agents', 'Deploy New Agent', [{ key: 'name', label: 'Agent name', placeholder: 'Support Agent' }, { key: 'description', label: 'Description', placeholder: 'What this agent handles' }], 'agents');
+  add('automations', 'Create Automation', [{ key: 'name', label: 'Automation name', placeholder: 'Lead follow-up' }, { key: 'trigger', label: 'Trigger', placeholder: 'New lead' }], 'automations');
+  add('integrations', 'Add Integration', [{ key: 'provider', label: 'Provider', placeholder: 'Slack, Notion, CRM...' }, { key: 'status', label: 'Status', placeholder: 'Connected' }], 'integrations');
+  const save = [...(section('settings')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Save Changes')); save?.addEventListener('click', async () => { try { await callBusiness({ action: 'saveProfile', name: $('profileName')?.value.trim() || 'NexusAI user' }); save.textContent = 'Saved'; setTimeout(() => save.textContent = 'Save Changes', 1500); } catch (e) { alert(e.message); } });
+  section('agents')?.querySelectorAll('button').forEach(btn => { if (btn.textContent.includes('Configure')) btn.addEventListener('click', () => modal('Configure Agent', [{ key: 'status', label: 'Status', value: 'Active' }, { key: 'instructions', label: 'Instructions', placeholder: 'Describe the agent behavior' }], data => callBusiness({ action: 'saveEntity', collection: 'agents', data }))); if (btn.textContent.includes('View')) btn.addEventListener('click', () => alert('Agent details are available after deployment.')); });
+  document.querySelectorAll('#sec-integrations button').forEach(btn => { if (btn.textContent.includes('Configure')) btn.addEventListener('click', () => modal('Configure Integration', [{ key: 'status', label: 'Status', value: 'Connected' }, { key: 'notes', label: 'Notes' }], data => callBusiness({ action: 'saveEntity', collection: 'integrations', data }))); });
+}
 function subscribe(user) {
   const run = ++generation;
   resetStats();
   const watch = (name, callback) => { const stop = onSnapshot(query(collection(db, 'users', user.uid, name), orderBy('createdAt', 'desc'), limit(100)), snap => { if (generation !== run) return; const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); updateStats(name, rows); callback(rows); }, error => { if (generation === run) console.warn(`${name} unavailable`, error.code); }); stops.push(stop); };
   watch('leads', rows => renderActivity(rows)); watch('tasks', rows => renderActivity(rows)); watch('runs', rows => renderActivity(rows));
+  wireWorkspace();
 }
 
 if (Object.values(config).every(Boolean)) {
