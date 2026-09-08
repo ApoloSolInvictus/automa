@@ -164,8 +164,8 @@ function doLogout() {
     // reset chat UI
     document.getElementById('chatBody').innerHTML = `
     <div class="d-flex flex-column gap-1">
-      <div class="msg msg-ai">ðŸ‘‹ Hi! I'm your NexusAI assistant. I can help you with support analytics, agent configuration, automation workflows, and business insights. What would you like to know?</div>
-      <div class="msg-time" style="align-self:flex-start;padding-left:4px">NexusAI Â· Just now</div>
+      <div class="msg msg-ai">👋 Hi! I'm your Automa assistant from W Studio 3D. I can help with customer and contract workflows, agent configuration, automations, and business insights. What would you like to improve?</div>
+      <div class="msg-time" style="align-self:flex-start;padding-left:4px">Automa · Just now</div>
     </div>`;
 }
 
@@ -327,7 +327,7 @@ function initAnalyticsChart() {
                     tension: .4
                 },
                 {
-                    label: 'Resolved by AI',
+                    label: 'Completed by Automa',
                     data: [6560, 7644, 8736, 8330, 9632, 11264, 12408, 13728, 15136, 16720, 18834, 22016],
                     fill: true,
                     backgroundColor: g2,
@@ -412,7 +412,7 @@ function updateChartColors() {
 
 /*  AI CHAT FALLBACK — the module integration replaces sendChat in index.html  */
 function sendChat() {
-    appendMsg('Demo visual: el chat de IA no está conectado.', 'ai');
+    appendMsg('The Automa assistant is not connected in this preview. Configure Firebase and OpenAI to enable live answers.', 'ai');
 }
 
 function appendMsg(text, role) {
@@ -425,7 +425,7 @@ function appendMsg(text, role) {
     wrap.className = 'd-flex flex-column gap-1';
     wrap.innerHTML = `
     <div class="msg msg-${role}" style="animation:fadeIn .3s ease">${escapeHtml(text).replace(/\n/g,'<br>')}</div>
-    <div class="msg-time" style="align-self:${role==='ai'?'flex-start':'flex-end'};padding:0 4px">${role==='ai'?'NexusAI':'You'} · ${time}</div>`;
+    <div class="msg-time" style="align-self:${role==='ai'?'flex-start':'flex-end'};padding:0 4px">${role==='ai'?'Automa':'You'} · ${time}</div>`;
     body.appendChild(wrap);
     body.scrollTop = body.scrollHeight;
 }
@@ -453,8 +453,8 @@ function clearChat() {
     chatHistory = [];
     document.getElementById('chatBody').innerHTML = `
     <div class="d-flex flex-column gap-1">
-      <div class="msg msg-ai">👋 Hi! I'm your NexusAI assistant. I can help you with support analytics, agent configuration, automation workflows, and business insights. What would you like to know?</div>
-      <div class="msg-time" style="align-self:flex-start;padding-left:4px">NexusAI · Just now</div>
+      <div class="msg msg-ai">👋 Hi! I'm your Automa assistant from W Studio 3D. I can help with customer and contract workflows, agent configuration, automations, and business insights. What would you like to improve?</div>
+      <div class="msg-time" style="align-self:flex-start;padding-left:4px">Automa · Just now</div>
     </div>`;
 }
 
@@ -516,14 +516,14 @@ document.addEventListener('click', (e) => {
 
 /*  LIVE ACTIVITY TICKER  */
 const activities = [
-    ['#34d399', 'AI resolved shipping query for customer #4821'],
-    ['#8b5cf6', 'Sales agent sent follow-up email to 5 leads'],
-    ['#34d399', 'Refund processed automatically â€” $29.99'],
-    ['#fbbf24', 'Escalation: account access issue â†’ human agent'],
-    ['#60a5fa', 'Data sync completed â€” 28 CRM records updated'],
-    ['#34d399', 'Onboarding bot guided new user through setup'],
-    ['#8b5cf6', 'Weekly performance report generated and sent'],
-    ['#34d399', 'AI resolved 12 billing questions in 8 seconds'],
+    ['#34d399', 'Customer question answered by the support agent'],
+    ['#8b5cf6', 'Contract follow-up prepared for team review'],
+    ['#34d399', 'Customer record updated with approved context'],
+    ['#fbbf24', 'Complex request escalated to a human agent'],
+    ['#60a5fa', 'Customer and contract data sync completed'],
+    ['#34d399', 'Automa prepared an onboarding checklist'],
+    ['#8b5cf6', 'Workflow performance report generated'],
+    ['#34d399', 'Customer support queue reviewed by Automa'],
 ];
 let actIdx = 0;
 setInterval(() => {

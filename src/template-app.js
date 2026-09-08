@@ -182,12 +182,72 @@ function openAgentTest(agent = {}, id) {
     alert(`${result.agent || seed.name} · ${modelLabel(result.model || seed.model)}\n\n${result.reply || 'No response.'}`);
   });
 }
+const AUTOMATION_BLUEPRINTS = Object.freeze({
+  triage: {
+    name: 'Customer request triage',
+    trigger: 'New customer or support message',
+    steps: 'Classify the request, set its priority, assign the right agent or queue, and escalate when a human decision is needed.',
+    prerequisites: 'Consistent tags or CRM fields and a defined escalation owner.',
+    metrics: 'Time to assignment, first response time, and open queue size.'
+  },
+  autoresponder: {
+    name: 'Smart autoresponder',
+    trigger: 'New message that matches an approved common question',
+    steps: 'Use the selected OpenAI agent to choose an approved answer, include the relevant next step, and escalate when context is missing.',
+    prerequisites: 'Common inquiry templates, approved answers, and knowledge links.',
+    metrics: 'Deflection rate, response quality, and customer satisfaction.'
+  },
+  scheduling: {
+    name: 'Meeting scheduling',
+    trigger: 'Customer or prospect requests a meeting',
+    steps: 'Collect the meeting goal, check the permitted availability, propose a slot, and send a confirmation for review.',
+    prerequisites: 'Calendar rules, booking link, and a meeting owner.',
+    metrics: 'Time to booking, no-show rate, and completed meetings.'
+  },
+  sync: {
+    name: 'Customer context sync',
+    trigger: 'New or updated customer, lead, or contract record',
+    steps: 'Validate the fields, map them to the destination, record the result, and flag conflicts for a human.',
+    prerequisites: 'Field mapping and one source of truth for each record.',
+    metrics: 'Sync failures, duplicate records, and synchronization delay.'
+  },
+  reports: {
+    name: 'Scheduled workflow report',
+    trigger: 'Scheduled time or reporting period closes',
+    steps: 'Gather approved activity data, summarize changes and exceptions, and send the report to the configured recipients.',
+    prerequisites: 'Trusted data, report recipients, and a reporting schedule.',
+    metrics: 'Delivery time, action rate, and unresolved exceptions.'
+  },
+  contracts: {
+    name: 'Contract follow-up',
+    trigger: 'Contract stage changes or a required detail is missing',
+    steps: 'Identify missing information, prepare a reminder, route the next approval, and keep the decision with the responsible person.',
+    prerequisites: 'Contract stages, owners, required fields, and approval boundaries.',
+    metrics: 'Cycle time, overdue steps, and approval completion.'
+  }
+});
+window.openAutomationPlaybook = function openAutomationPlaybook() {
+  const button = document.querySelector('.db-nl[onclick*=playbook]');
+  if (typeof window.dbNav === 'function') window.dbNav('playbook', button);
+};
+window.openAutomationBlueprint = function openAutomationBlueprint(key) {
+  const blueprint = AUTOMATION_BLUEPRINTS[key];
+  if (!blueprint) return;
+  return modal(`Create ${blueprint.name}`, [
+    { type: 'note', value: `Planning blueprint\n\nPrerequisites: ${blueprint.prerequisites}\n\nMeasure: ${blueprint.metrics}` },
+    { key: 'name', label: 'Automation name', value: blueprint.name },
+    { key: 'trigger', label: 'Trigger', value: blueprint.trigger },
+    { key: 'steps', label: 'Workflow steps', type: 'textarea', rows: 4, value: blueprint.steps },
+    { key: 'status', label: 'Status', type: 'select', value: 'draft', options: [{ value: 'draft', label: 'Draft' }, { value: 'enabled', label: 'Enabled' }] }
+  ], data => callBusiness({ action: 'saveEntity', collection: 'automations', data: { ...data, blueprint: key } }));
+};
 function wireWorkspace() {
   if (workspaceWired) return; workspaceWired = true;
   const section = id => document.querySelector(`#sec-${id}`);
   const add = (id, label, fields, collection) => { const btn = [...(section(id)?.querySelectorAll('button') || [])].find(b => b.textContent.includes(label)); btn?.addEventListener('click', () => modal(label, fields, data => callBusiness({ action: 'saveEntity', collection, data }))); };
   const deploy = [...(section('agents')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Deploy New Agent')); deploy?.addEventListener('click', () => openAgentEditor());
   add('automations', 'Create Automation', [{ key: 'name', label: 'Automation name', placeholder: 'Lead follow-up' }, { key: 'trigger', label: 'Trigger', placeholder: 'New lead' }], 'automations');
+  document.querySelectorAll('[data-use-blueprint]').forEach(button => button.addEventListener('click', () => window.openAutomationBlueprint(button.dataset.useBlueprint)));
   add('integrations', 'Add Integration', [{ key: 'provider', label: 'Provider', placeholder: 'Slack, Notion, CRM...' }, { key: 'status', label: 'Status', placeholder: 'Connected' }], 'integrations');
   const save = [...(section('settings')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Save Changes')); save?.addEventListener('click', async () => { try { await callBusiness({ action: 'saveProfile', name: $('profileName')?.value.trim() || 'Automa user' }); save.textContent = 'Saved'; setTimeout(() => save.textContent = 'Save Changes', 1500); } catch (e) { alert(e.message); } });
   section('agents')?.querySelectorAll('.agent-card').forEach(card => {

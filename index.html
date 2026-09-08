@@ -637,6 +637,7 @@
                <button class="db-nl" onclick="dbNav('chat',this)"><i class="fa-regular fa-comments"></i> AI Chat <span class="db-badge" style="background:#34d399">Live</span></button>
                <button class="db-nl" onclick="dbNav('analytics',this)"><i class="fa-solid fa-chart-line"></i> Analytics</button>
                <button class="db-nl" onclick="dbNav('automations',this)"><i class="fa-solid fa-bolt"></i> Automations</button>
+               <button class="db-nl" onclick="dbNav('playbook',this)"><i class="fa-solid fa-wand-magic-sparkles"></i> Automation Playbook <span class="db-badge" style="background:#a78bfa">New</span></button>
                <div class="db-nav-section">Workspace</div>
                <button class="db-nl" onclick="dbNav('integrations',this)"><i class="fa-solid fa-plug"></i> Integrations</button>
                <button class="db-nl" onclick="dbNav('settings',this)"><i class="fa-solid fa-gear"></i> Settings</button>
@@ -1013,7 +1014,7 @@
                            <div style="display:flex;flex-direction:column;gap:8px">
                               <button class="boc btn py-2 text-start px-3" style="font-size:.82rem;border-radius:10px" onclick="quickMsg('Give me a summary of today\'s support metrics')"><i class="fa-solid fa-chart-bar me-2" style="color:var(--pur)"></i>Today's metrics</button>
                               <button class="boc btn py-2 text-start px-3" style="font-size:.82rem;border-radius:10px" onclick="quickMsg('Which AI agent is performing best this week?')"><i class="fa-solid fa-robot me-2" style="color:#34d399"></i>Best performing agent</button>
-                              <button class="boc btn py-2 text-start px-3" style="font-size:.82rem;border-radius:10px" onclick="quickMsg('What automation should I set up to save the most time?')"><i class="fa-solid fa-bolt me-2" style="color:#fbbf24"></i>Automation suggestions</button>
+                              <button class="boc btn py-2 text-start px-3" style="font-size:.82rem;border-radius:10px" onclick="openAutomationPlaybook()"><i class="fa-solid fa-bolt me-2" style="color:#fbbf24"></i>Automation suggestions</button>
                               <button class="boc btn py-2 text-start px-3" style="font-size:.82rem;border-radius:10px" onclick="quickMsg('How can I reduce my average response time?')"><i class="fa-regular fa-clock me-2" style="color:#60a5fa"></i>Improve response time</button>
                               <button class="boc btn py-2 text-start px-3" style="font-size:.82rem;border-radius:10px" onclick="quickMsg('Generate a weekly performance report')"><i class="fa-solid fa-file-lines me-2" style="color:#a78bfa"></i>Generate report</button>
                            </div>
@@ -1108,6 +1109,75 @@
                                  </div>
                               </div>
                            </div>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+               <!-- -- AUTOMATION PLAYBOOK -- -->
+               <div class="db-section" id="sec-playbook">
+                  <div class="d-flex align-items-center justify-content-between mb-4 gap-3">
+                     <div>
+                        <h4 style="font-size:1.4rem;font-weight:700;margin-bottom:4px">Automation Playbook</h4>
+                        <p style="font-size:.875rem;color:var(--tx3);margin:0">Start with high-volume work that is easy to measure and improve.</p>
+                     </div>
+                     <button class="bgrd btn px-3 py-2" style="font-size:.85rem;white-space:nowrap" onclick="openAutomationBlueprint('triage')"><i class="fa-solid fa-wand-magic-sparkles me-2"></i>Use a Blueprint</button>
+                  </div>
+                  <div class="p-3 mb-4" style="background:linear-gradient(135deg,rgba(139,92,246,.12),rgba(59,130,246,.08));border:1px solid rgba(139,92,246,.25);border-radius:14px;color:var(--tx2);font-size:.84rem;line-height:1.6">
+                     <strong style="color:var(--tx)">How to choose:</strong> begin with a repetitive process that has a clear trigger, a known owner, and a measurable outcome. The time ranges below are planning estimates; compare them with your own baseline before launch.
+                  </div>
+                  <div class="row g-3">
+                     <div class="col-lg-4 col-md-6">
+                        <div class="gc p-4 h-100 d-flex flex-column" data-blueprint-card="triage">
+                           <div class="d-flex align-items-start justify-content-between gap-2 mb-3"><div class="ftico" style="margin:0"><i class="fa-solid fa-inbox"></i></div><span class="bst son">Highest impact</span></div>
+                           <h5 class="fs-5 fw-semibold mb-2">Ticket &amp; Email Triage</h5>
+                           <p style="font-size:.84rem;color:var(--tx2);line-height:1.55">Classify incoming requests, assign the right queue or agent, and set priority automatically.</p>
+                           <div class="mt-auto" style="font-size:.76rem;color:var(--tx3);line-height:1.55"><div><strong style="color:var(--tx2)">Planning impact:</strong> 5–20+ hours/week</div><div><strong style="color:var(--tx2)">Prerequisites:</strong> consistent tags or CRM fields</div><div><strong style="color:var(--tx2)">Measure:</strong> assignment time, first response, backlog</div></div>
+                           <button class="bgrd btn w-100 py-2 mt-3" style="font-size:.82rem" data-use-blueprint="triage"><i class="fa-solid fa-plus me-1"></i>Create this workflow</button>
+                        </div>
+                     </div>
+                     <div class="col-lg-4 col-md-6">
+                        <div class="gc p-4 h-100 d-flex flex-column" data-blueprint-card="autoresponder">
+                           <div class="d-flex align-items-start justify-content-between gap-2 mb-3"><div class="ftico" style="margin:0"><i class="fa-regular fa-comment-dots"></i></div><span class="bst sbz">Fast to launch</span></div>
+                           <h5 class="fs-5 fw-semibold mb-2">Smart Autoresponders</h5>
+                           <p style="font-size:.84rem;color:var(--tx2);line-height:1.55">Send context-aware replies with approved templates, knowledge links, and a clear next step.</p>
+                           <div class="mt-auto" style="font-size:.76rem;color:var(--tx3);line-height:1.55"><div><strong style="color:var(--tx2)">Planning impact:</strong> 3–15 hours/week</div><div><strong style="color:var(--tx2)">Prerequisites:</strong> common questions and approved answers</div><div><strong style="color:var(--tx2)">Measure:</strong> deflection, quality, satisfaction</div></div>
+                           <button class="bgrd btn w-100 py-2 mt-3" style="font-size:.82rem" data-use-blueprint="autoresponder"><i class="fa-solid fa-plus me-1"></i>Create this workflow</button>
+                        </div>
+                     </div>
+                     <div class="col-lg-4 col-md-6">
+                        <div class="gc p-4 h-100 d-flex flex-column" data-blueprint-card="scheduling">
+                           <div class="d-flex align-items-start justify-content-between gap-2 mb-3"><div class="ftico" style="margin:0"><i class="fa-regular fa-calendar-check"></i></div><span class="bst sid">High leverage</span></div>
+                           <h5 class="fs-5 fw-semibold mb-2">Meeting Scheduling</h5>
+                           <p style="font-size:.84rem;color:var(--tx2);line-height:1.55">Let customers or prospects request a time, check availability, and receive confirmations automatically.</p>
+                           <div class="mt-auto" style="font-size:.76rem;color:var(--tx3);line-height:1.55"><div><strong style="color:var(--tx2)">Planning impact:</strong> fewer scheduling handoffs</div><div><strong style="color:var(--tx2)">Prerequisites:</strong> calendar rules and booking link</div><div><strong style="color:var(--tx2)">Measure:</strong> booking time, no-shows, conversion</div></div>
+                           <button class="bgrd btn w-100 py-2 mt-3" style="font-size:.82rem" data-use-blueprint="scheduling"><i class="fa-solid fa-plus me-1"></i>Create this workflow</button>
+                        </div>
+                     </div>
+                     <div class="col-lg-4 col-md-6">
+                        <div class="gc p-4 h-100 d-flex flex-column" data-blueprint-card="sync">
+                           <div class="d-flex align-items-start justify-content-between gap-2 mb-3"><div class="ftico" style="margin:0"><i class="fa-solid fa-arrows-rotate"></i></div><span class="bst son">Always on</span></div>
+                           <h5 class="fs-5 fw-semibold mb-2">Data Sync &amp; Entry</h5>
+                           <p style="font-size:.84rem;color:var(--tx2);line-height:1.55">Move approved customer, lead, and contract data between the tools your team already uses.</p>
+                           <div class="mt-auto" style="font-size:.76rem;color:var(--tx3);line-height:1.55"><div><strong style="color:var(--tx2)">Planning impact:</strong> removes duplicate entry</div><div><strong style="color:var(--tx2)">Prerequisites:</strong> field mapping and a source of truth</div><div><strong style="color:var(--tx2)">Measure:</strong> sync failures, duplicate records, lag</div></div>
+                           <button class="bgrd btn w-100 py-2 mt-3" style="font-size:.82rem" data-use-blueprint="sync"><i class="fa-solid fa-plus me-1"></i>Create this workflow</button>
+                        </div>
+                     </div>
+                     <div class="col-lg-4 col-md-6">
+                        <div class="gc p-4 h-100 d-flex flex-column" data-blueprint-card="reports">
+                           <div class="d-flex align-items-start justify-content-between gap-2 mb-3"><div class="ftico" style="margin:0"><i class="fa-solid fa-chart-line"></i></div><span class="bst sbz">Easy to measure</span></div>
+                           <h5 class="fs-5 fw-semibold mb-2">Scheduled Reports</h5>
+                           <p style="font-size:.84rem;color:var(--tx2);line-height:1.55">Gather workflow activity, summarize the key changes, and send a report to the right people on schedule.</p>
+                           <div class="mt-auto" style="font-size:.76rem;color:var(--tx3);line-height:1.55"><div><strong style="color:var(--tx2)">Planning impact:</strong> removes recurring manual reporting</div><div><strong style="color:var(--tx2)">Prerequisites:</strong> trusted data and report recipients</div><div><strong style="color:var(--tx2)">Measure:</strong> delivery time, action rate, exceptions</div></div>
+                           <button class="bgrd btn w-100 py-2 mt-3" style="font-size:.82rem" data-use-blueprint="reports"><i class="fa-solid fa-plus me-1"></i>Create this workflow</button>
+                        </div>
+                     </div>
+                     <div class="col-lg-4 col-md-6">
+                        <div class="gc p-4 h-100 d-flex flex-column" data-blueprint-card="contracts">
+                           <div class="d-flex align-items-start justify-content-between gap-2 mb-3"><div class="ftico" style="margin:0"><i class="fa-solid fa-file-signature"></i></div><span class="bst son">Automa focus</span></div>
+                           <h5 class="fs-5 fw-semibold mb-2">Contract Follow-up</h5>
+                           <p style="font-size:.84rem;color:var(--tx2);line-height:1.55">Track missing details, prepare reminders, and route approvals while keeping a person in control of decisions.</p>
+                           <div class="mt-auto" style="font-size:.76rem;color:var(--tx3);line-height:1.55"><div><strong style="color:var(--tx2)">Planning impact:</strong> fewer stalled handoffs</div><div><strong style="color:var(--tx2)">Prerequisites:</strong> contract stages and owners</div><div><strong style="color:var(--tx2)">Measure:</strong> cycle time, overdue steps, approvals</div></div>
+                           <button class="bgrd btn w-100 py-2 mt-3" style="font-size:.82rem" data-use-blueprint="contracts"><i class="fa-solid fa-plus me-1"></i>Create this workflow</button>
                         </div>
                      </div>
                   </div>
