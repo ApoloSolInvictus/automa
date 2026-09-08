@@ -19,6 +19,7 @@ La plantilla visual original de NexusAI se conserva en [`demo.html`](demo.html),
 | Historial | Listo | Registra si la tarea fue creada u omitida |
 | Completar tareas | Listo | Completar y reabrir desde el dashboard |
 | IA y agentes | Listo | El chat y las pruebas de agentes usan OpenAI desde funciones de Vercel; cada agente puede elegir un modelo |
+| Telegram | Preparado | `/api/telegram` recibe mensajes, ejecuta el agente y responde; requiere token y webhook |
 | WhatsApp, email, Slack, CRM y pagos | Pendiente | Requieren integraciones y credenciales adicionales |
 | Ejecución al vencer una tarea | Pendiente | La fecha se guarda; todavía no existe un cron que envíe mensajes |
 | Equipos y organizaciones | Pendiente | Esta versión tiene un espacio individual por usuario |
@@ -304,7 +305,45 @@ La API valida la lista antes de guardar o ejecutar un agente. Si un proyecto Ope
 
 El uso de OpenAI se factura por el consumo del modelo y puede tener límites de tasa. Empieza con entradas cortas, guarda solo el resultado necesario y define un presupuesto. No envíes contraseñas, tokens, claves, tarjetas ni información personal que no sea necesaria. Decide cuánto tiempo conservarás prompts y respuestas antes de activar el flujo con clientes reales.
 
-## 6. Pruebas y verificación
+## 6. Conectar WSTUDIO3DBot en Telegram
+
+El perfil público comprobado es **W Studio_bot (@WSTUDIO3DBot)**. La página muestra el botón **START BOT**; debes pulsarlo tú desde tu cuenta de Telegram para iniciar la conversación. El perfil por sí solo no conecta el bot con Vercel.
+
+### 6.1 Variables privadas de Vercel
+
+En **Project settings → Environment Variables**, agrega estas variables en Production (y Preview si vas a probar allí):
+
+```env
+TELEGRAM_BOT_TOKEN=                         # token que entrega @BotFather
+TELEGRAM_WEBHOOK_SECRET=                    # secreto nuevo, largo y aleatorio
+TELEGRAM_OWNER_UID=                         # UID del usuario propietario en Firebase Auth
+TELEGRAM_AGENT_ID=support-bot-v2-1
+TELEGRAM_WEBHOOK_URL=https://automa.wstudio3d.com/api/telegram
+```
+
+Marca `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como secretos. No los guardes en Firestore, `.env.example`, GitHub ni en el navegador. `TELEGRAM_OWNER_UID` enlaza el chat de Telegram con la cuenta que contiene `users/{uid}/agents`; para una primera instalación usa el UID de tu usuario en Firebase Authentication. `TELEGRAM_AGENT_ID` puede ser `support-bot-v2-1`, `sales-qualifier`, `data-analyzer` o `email-automator`, o el ID de un agente que hayas guardado desde el dashboard.
+
+### 6.2 Registrar el webhook
+
+Después de guardar las variables y desplegar, carga las mismas variables en un entorno local protegido y ejecuta:
+
+```sh
+npm run telegram:set-webhook
+```
+
+El script llama a `setWebhook` con `https://automa.wstudio3d.com/api/telegram`, limita los eventos a mensajes y configura `secret_token`. Telegram enviará ese secreto en el encabezado `X-Telegram-Bot-Api-Secret-Token`; la función rechaza cualquier solicitud sin coincidencia. Esta validación está contemplada por la documentación oficial de Telegram ([Bot API](https://core.telegram.org/bots/api)).
+
+### 6.3 Probar el flujo
+
+1. Abre `@WSTUDIO3DBot` y pulsa **START BOT**.
+2. Envía un mensaje de texto, por ejemplo: `Help me qualify this new lead.`
+3. Telegram entrega el evento al webhook de Vercel.
+4. Vercel carga el agente y su modelo desde Firestore, llama a OpenAI y devuelve la respuesta al mismo chat.
+5. La conversación se conserva en `users/{uid}/channels/telegram/chats/{chatId}` y el identificador del evento en `users/{uid}/channels/telegram/updates/{updateId}`.
+
+La primera versión procesa mensajes de texto y mantiene respuestas de texto. No ejecuta pagos, no envía correos y no modifica sistemas externos. Los mensajes con fotos, audio o documentos se ignoran hasta añadir transcripción o análisis de archivos. Para varios propietarios habrá que sustituir `TELEGRAM_OWNER_UID` por un flujo de vinculación de cuentas.
+
+## 7. Pruebas y verificación
 
 ```sh
 npm test
@@ -322,7 +361,7 @@ Ese comando necesita Java 21+. Debe confirmar lectura del propietario, denegaci�
 
 Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves ausentes o inválidas, reintentos, payloads fuera de rango y logs sin tokens.
 
-## 7. Solución de problemas
+## 8. Solución de problemas
 
 **Vercel no encuentra `package.json`.** Confirma repositorio, rama `main`, Root Directory `.`, y que el commit incluya `package.json`.
 
@@ -340,15 +379,19 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 
 **OpenAI devuelve `401`.** La clave no está disponible para la función, está revocada o pertenece a otro proyecto. Revisa `OPENAI_API_KEY` en Vercel; nunca la pruebes desde el navegador.
 
+**Telegram no responde.** Confirma que `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_OWNER_UID` y `TELEGRAM_AGENT_ID` existan en el mismo entorno de Vercel que el dominio público. Ejecuta de nuevo `npm run telegram:set-webhook`, comprueba que el bot tenga una conversación iniciada con **START BOT** y revisa los logs de la función `/api/telegram`. Un token inválido o un secreto incorrecto produce `401`; una configuración incompleta produce `503`.
+
 **El emulador no inicia.** Instala Java 21+ y vuelve a ejecutar `npm run test:rules`.
 
-## 8. Archivos importantes
+## 9. Archivos importantes
 
 - [`index.html`](index.html): aplicación real de Automa.
 - [`src/app.js`](src/app.js): Authentication, listeners y dashboard.
 - [`src/app.css`](src/app.css): interfaz responsive.
 - [`api/business.js`](api/business.js): función segura de Vercel y Firebase Admin.
 - [`api/chat.js`](api/chat.js): autenticación REST y conexión aislada con OpenAI.
+- [`api/telegram.js`](api/telegram.js): webhook autenticado para WSTUDIO3DBot.
+- [`scripts/set-telegram-webhook.mjs`](scripts/set-telegram-webhook.mjs): registro seguro de la URL de Telegram.
 - [`server/domain.js`](server/domain.js): validación y planificación.
 - [`shared/models.js`](shared/models.js): catálogo y allowlist de modelos OpenAI.
 - [`shared/agents.js`](shared/agents.js): configuraciones iniciales de los cuatro agentes del template.
@@ -357,7 +400,7 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 - [`demo.html`](demo.html): plantilla visual original.
 - [`tests/`](tests/): pruebas funcionales, reglas y UI.
 
-## 9. Próximos pasos
+## 10. Próximos pasos
 
 1. Añadir herramientas server-side con permisos para que un agente ejecute acciones reales de negocio.
 2. Añadir un cron que busque tareas vencidas y cree ejecuciones idempotentes.

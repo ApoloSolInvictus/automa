@@ -7,6 +7,10 @@
     "api/chat.js": {
       "maxDuration": 30
     },
+    "api/telegram.js": {
+      "maxDuration": 30,
+      "includeFiles": "node_modules/{firebase-admin,@google-cloud,google-auth-library,google-gax,jwks-rsa,jsonwebtoken,fast-deep-equal,@fastify}/**"
+    },
     "api/business.js": {
       "maxDuration": 30,
       "includeFiles": "node_modules/{firebase-admin,@google-cloud,google-auth-library,google-gax,jwks-rsa,jsonwebtoken,fast-deep-equal,@fastify}/**"
