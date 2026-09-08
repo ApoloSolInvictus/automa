@@ -1,5 +1,4 @@
 import { InputError, parseCommand, planFollowUp } from '../server/domain.js';
-import { createRequire } from 'node:module';
 import { handleChatCommand, requestOpenAI } from './chat.js';
 import { DEFAULT_OPENAI_MODEL, isAllowedOpenAIModel } from '../shared/models.js';
 import { getDefaultAgent } from '../shared/agents.js';
@@ -22,10 +21,12 @@ async function services() {
   const normalizedPrivateKey = clean(privateKey).replace(/\r/g, '');
   let adminApp, adminCert, adminGetApps, adminInitializeApp, adminGetAuth, adminGetFirestore, adminFieldValue;
   try {
-    const runtimeRequire = createRequire(`${process.cwd()}/api/business.js`);
-    ({ cert: adminCert, getApps: adminGetApps, initializeApp: adminInitializeApp } = runtimeRequire('firebase-admin/app'));
-    ({ getAuth: adminGetAuth } = runtimeRequire('firebase-admin/auth'));
-    ({ getFirestore: adminGetFirestore, FieldValue: adminFieldValue } = runtimeRequire('firebase-admin/firestore'));
+    // firebase-admin v14 is ESM. Dynamic imports keep the Admin SDK out of
+    // the isolated chat function while loading the correct module format in
+    // Vercel's Node runtime.
+    ({ cert: adminCert, getApps: adminGetApps, initializeApp: adminInitializeApp } = await import('firebase-admin/app'));
+    ({ getAuth: adminGetAuth } = await import('firebase-admin/auth'));
+    ({ getFirestore: adminGetFirestore, FieldValue: adminFieldValue } = await import('firebase-admin/firestore'));
   } catch (error) {
     throw Object.assign(new Error('FIREBASE_ADMIN_SDK_LOAD'), { code: 'firebase_admin_sdk_load', cause: error });
   }
