@@ -791,7 +791,11 @@
                         <h4 class="fw-700 mb-1" style="font-size:1.4rem;font-weight:700">Welcome, <span id="greetName">User</span></h4>
                         <p style="font-size:.875rem;color:var(--tx3);margin:0">Here is what your Automa agents and business workflows are doing today.</p>
                      </div>
-                     <button class="bgrd btn px-3 py-2" style="font-size:.85rem;white-space:nowrap" onclick="dbNav('chat',document.querySelector('[onclick*=chat]'))"><i class="fa-solid fa-robot me-2"></i>Ask AI Agent</button>
+                     <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                        <button class="boc btn px-3 py-2" data-demo-create disabled onclick="createDemoData()" style="font-size:.8rem;white-space:nowrap" title="Add reversible sample data to the current workspace"><i class="fa-solid fa-wand-magic-sparkles me-1"></i>Crear Demo</button>
+                        <button class="boc btn px-3 py-2" data-demo-clear disabled onclick="clearDemoData()" style="font-size:.8rem;white-space:nowrap" title="Delete only demo records from the current workspace"><i class="fa-solid fa-trash-can me-1"></i>Borrar Datos Locales</button>
+                        <button class="bgrd btn px-3 py-2" style="font-size:.85rem;white-space:nowrap" onclick="dbNav('chat',document.querySelector('[onclick*=chat]'))"><i class="fa-solid fa-robot me-2"></i>Ask AI Agent</button>
+                     </div>
                   </div>
                   <!-- Stat cards -->
                   <div class="row g-3 mb-4">

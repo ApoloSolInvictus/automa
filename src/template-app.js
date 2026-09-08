@@ -388,7 +388,32 @@ async function runCrmAssist(task) {
 function updateWorkspaceUi() {
   const name = $('workspaceName'); if (name) name.textContent = workspace.name || 'Personal workspace';
   const role = $('workspaceRole'); if (role) role.textContent = (workspace.role || 'owner').replace(/^./, letter => letter.toUpperCase());
+  updateDemoControls();
 }
+function updateDemoControls() {
+  const canWrite = Boolean(currentUser) && workspace.role !== 'viewer';
+  document.querySelectorAll('[data-demo-create],[data-demo-clear]').forEach(button => {
+    button.disabled = !canWrite;
+    if (!canWrite && workspace.role === 'viewer') button.title = 'Viewer members have read-only access.';
+  });
+}
+async function runDemoAction(action) {
+  if (!currentUser) return showCrmNotice('Demo data', 'Sign in before using the demo controls.');
+  if (workspace.role === 'viewer') return showCrmNotice('Demo data', 'Viewer members have read-only access. Ask an Owner or Admin to manage demo data.');
+  if (action === 'clearDemo' && !window.confirm('Delete only the reversible demo records from this workspace?')) return;
+  const button = document.querySelector(action === 'seedDemo' ? '[data-demo-create]' : '[data-demo-clear]');
+  if (button) button.disabled = true;
+  try {
+    const result = await callBusiness({ action, ...workspacePayload() });
+    const message = action === 'seedDemo'
+      ? `${result.count || 0} sample records were added to ${workspace.name}. Open CRM, AI Agents and Automations to explore them.`
+      : `${result.count || 0} demo records were removed from ${workspace.name}. Real records were left untouched.`;
+    showCrmNotice(action === 'seedDemo' ? 'Demo created' : 'Local demo data cleared', message);
+  } catch (error) { showCrmNotice('Demo data', error.message || 'The demo action could not be completed.'); }
+  finally { updateDemoControls(); }
+}
+window.createDemoData = () => runDemoAction('seedDemo');
+window.clearDemoData = () => runDemoAction('clearDemo');
 function stopSubscriptions() {
   stops.forEach(stop => stop());
   stops = [];

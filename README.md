@@ -24,6 +24,7 @@ La plantilla visual original de NexusAI se conserva en [`demo.html`](demo.html),
 | WhatsApp, email, Slack y pagos | Pendiente | Requieren integraciones y credenciales adicionales |
 | Ejecución al vencer una tarea | Pendiente | La fecha se guarda; todavía no existe un cron que envíe mensajes |
 | Equipos y organizaciones | Listo | Organizaciones aisladas, selector de espacio, invitaciones y roles Owner, Admin, Member y Viewer |
+| Datos demo | Listo | Crea 20 registros de ejemplo en el espacio actual y permite borrarlos sin tocar datos reales |
 
 La automatización no necesita Claude ni OpenAI para crear una tarea. El servidor aplica la regla y escribe en Firestore. El chat y el Copilot del CRM sí usan OpenAI solo desde funciones de servidor y con `OPENAI_API_KEY` configurada. Una IA se debe usar cuando el proceso necesite comprender lenguaje: clasificar un prospecto, resumir una conversación, extraer campos o preparar una respuesta. La IA propone o clasifica; el código mantiene los permisos, límites, reintentos, acciones y auditoría.
 
@@ -168,6 +169,10 @@ En cualquier espacio puedes crear y editar:
 - **Activities:** llamadas, correos, reuniones, tareas y notas con vencimiento.
 
 El buscador y el filtro de etapa trabajan sobre los registros en tiempo real. **AI CRM Copilot** envía un resumen acotado de esos registros al agente OpenAI elegido para priorizar el día, resumir el pipeline o redactar un seguimiento. La respuesta se muestra para revisión; no envía mensajes ni modifica sistemas externos por sí sola. Los botones **Add Company**, **Add Contact**, **New Opportunity** y **Log Activity** guardan mediante `/api/business` después de validar la sesión, el espacio seleccionado, el rol y los campos permitidos. La autorización de organización también se aplica a agentes, automatizaciones e integraciones.
+
+### 2.7 Datos demo reversibles
+
+En **Dashboard → Overview** están los botones **Crear Demo** y **Borrar Datos Locales**. El primero crea 20 registros de ejemplo repartidos entre prospectos, tareas, historial, CRM, agentes, automatizaciones e integraciones en el espacio actualmente seleccionado. El segundo busca únicamente documentos con `isDemo: true` y los elimina en ese espacio; los registros reales permanecen intactos. Puedes usarlo en el espacio personal o en una organización donde tengas permisos de escritura. Los miembros `Viewer` solo pueden consultar los datos.
 
 ## 3. Ejecutar localmente
 

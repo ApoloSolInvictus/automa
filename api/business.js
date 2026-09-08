@@ -182,6 +182,54 @@ async function acceptOrganizationInvitations(db, FieldValue, uid, email, request
   if (accepted.length) await batch.commit();
   return accepted;
 }
+const DEMO_COLLECTIONS = ['leads', 'tasks', 'runs', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities'];
+function demoDocuments() {
+  return [
+    ['leads', 'demo-lead-1', { name: 'Jordan Lee', email: 'jordan.lee@example.com', value: 18500, message: 'Interested in automating client onboarding.' }],
+    ['leads', 'demo-lead-2', { name: 'Taylor Morgan', email: 'taylor.morgan@example.com', value: 32000, message: 'Requested a contract workflow review.' }],
+    ['tasks', 'demo-task-1', { leadId: 'demo-lead-1', title: 'Follow up with Jordan Lee', status: 'pending', dueAt: '2026-09-12T15:00:00.000Z' }],
+    ['tasks', 'demo-task-2', { leadId: 'demo-lead-2', title: 'Prepare contract workflow review', status: 'pending', dueAt: '2026-09-14T16:30:00.000Z' }],
+    ['runs', 'demo-run-1', { leadId: 'demo-lead-1', status: 'completed', message: 'Demo follow-up task created' }],
+    ['runs', 'demo-run-2', { leadId: 'demo-lead-2', status: 'completed', message: 'Demo contract intake recorded' }],
+    ['agents', 'demo-support-agent', { name: 'Demo Support Agent', description: 'Customer Support', model: 'gpt-5.6-terra', instructions: 'Resolve common customer questions and identify when a human should review the case.', status: 'enabled' }],
+    ['agents', 'demo-sales-agent', { name: 'Demo Sales Qualifier', description: 'Sales Automation', model: 'gpt-5.6-sol', instructions: 'Qualify the request, identify missing details and propose the next safe sales step.', status: 'enabled' }],
+    ['automations', 'demo-triage', { name: 'Demo request triage', trigger: 'New customer message', status: 'enabled', steps: 'Classify, prioritize and route each request to the right agent.' }],
+    ['automations', 'demo-followup', { name: 'Demo lead follow-up', trigger: 'New qualified lead', status: 'draft', steps: 'Prepare a follow-up draft and create a review task.' }],
+    ['integrations', 'demo-calendar', { provider: 'Google Calendar', status: 'Connected', notes: 'Demo scheduling connection' }],
+    ['integrations', 'demo-helpdesk', { provider: 'Helpdesk', status: 'Connected', notes: 'Demo ticket routing connection' }],
+    ['companies', 'demo-company-1', { name: 'Northstar Logistics', industry: 'Logistics', website: 'https://northstar.example', size: 'mid', owner: 'Avery Chen', status: 'active', notes: 'Growing operations team evaluating intake automation.' }],
+    ['companies', 'demo-company-2', { name: 'Brightline Clinics', industry: 'Healthcare services', website: 'https://brightline.example', size: 'small', owner: 'Morgan Diaz', status: 'prospect', notes: 'Needs a secure appointment and follow-up workflow.' }],
+    ['contacts', 'demo-contact-1', { firstName: 'Jordan', lastName: 'Lee', companyId: 'demo-company-1', email: 'jordan.lee@example.com', phone: '+1 555 0101', role: 'Operations Director', status: 'lead', notes: 'Primary contact for the logistics automation project.' }],
+    ['contacts', 'demo-contact-2', { firstName: 'Taylor', lastName: 'Morgan', companyId: 'demo-company-2', email: 'taylor.morgan@example.com', phone: '+1 555 0102', role: 'Practice Manager', status: 'active', notes: 'Interested in reducing manual scheduling work.' }],
+    ['opportunities', 'demo-opportunity-1', { name: 'Northstar intake automation', companyId: 'demo-company-1', contactId: 'demo-contact-1', stage: 'proposal', amount: '18500', probability: '65', nextStep: 'Review the proposal with operations', owner: 'Avery Chen', expectedClose: '2026-09-30', notes: 'Proposal sent for workflow discovery and implementation.' }],
+    ['opportunities', 'demo-opportunity-2', { name: 'Brightline scheduling workflow', companyId: 'demo-company-2', contactId: 'demo-contact-2', stage: 'qualified', amount: '32000', probability: '40', nextStep: 'Confirm calendar requirements', owner: 'Morgan Diaz', expectedClose: '2026-10-15', notes: 'Qualified opportunity awaiting discovery call.' }],
+    ['activities', 'demo-activity-1', { type: 'meeting', subject: 'Northstar workflow discovery', companyId: 'demo-company-1', contactId: 'demo-contact-1', opportunityId: 'demo-opportunity-1', dueDate: '2026-09-12', status: 'pending', notes: 'Map the current client intake steps.' }],
+    ['activities', 'demo-activity-2', { type: 'email', subject: 'Send Brightline next steps', companyId: 'demo-company-2', contactId: 'demo-contact-2', opportunityId: 'demo-opportunity-2', dueDate: '2026-09-13', status: 'pending', notes: 'Share the approved discovery checklist.' }]
+  ];
+}
+async function seedDemoData(db, FieldValue, root) {
+  const stamp = FieldValue.serverTimestamp();
+  const batch = db.batch();
+  const documents = demoDocuments();
+  const existing = await Promise.all(documents.map(([collection, id]) => root.collection(collection).doc(id).get()));
+  const safeDocuments = documents.filter((entry, index) => !existing[index].exists || existing[index].data()?.isDemo === true);
+  for (const [collection, id, data] of safeDocuments) batch.set(root.collection(collection).doc(id), { ...data, isDemo: true, demoKey: id, createdAt: stamp, updatedAt: stamp }, { merge: true });
+  if (safeDocuments.length) await batch.commit();
+  return safeDocuments.length;
+}
+async function clearDemoData(db, root) {
+  const references = [];
+  for (const collection of DEMO_COLLECTIONS) {
+    const snapshot = await root.collection(collection).where('isDemo', '==', true).get();
+    snapshot.docs.forEach(doc => references.push(doc.ref));
+  }
+  for (let index = 0; index < references.length; index += 400) {
+    const batch = db.batch();
+    references.slice(index, index + 400).forEach(reference => batch.delete(reference));
+    await batch.commit();
+  }
+  return references.length;
+}
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return res.status(405).json({ error: 'Usa POST.' }); }
@@ -216,6 +264,14 @@ export default async function handler(req, res) {
       return res.status(result.status).json(result.body);
     }
     if (cmd.action === 'organizationAccept') return res.status(200).json({ ok: true, organizations: await acceptOrganizationInvitations(db, FieldValue, user.uid, user.email || '', cmd.orgId || null) });
+    if (cmd.action === 'seedDemo' || cmd.action === 'clearDemo') {
+      const root = cmd.orgId ? db.collection('organizations').doc(cmd.orgId) : db.collection('users').doc(user.uid);
+      const membership = cmd.orgId ? await organizationAccess(db, cmd.orgId, user.uid) : null;
+      if (cmd.orgId && !membership) return res.status(403).json({ error: 'You are not a member of this organization.', code: 'organization_forbidden' });
+      if (cmd.orgId && membership.role === 'viewer') return res.status(403).json({ error: 'Viewer members have read-only access.', code: 'organization_read_only' });
+      const count = cmd.action === 'seedDemo' ? await seedDemoData(db, FieldValue, root) : await clearDemoData(db, root);
+      return res.status(200).json({ ok: true, action: cmd.action, count });
+    }
     if (cmd.action === 'crmAssist') {
       const requestedAgentId = cmd.agentId || 'data-analyzer';
       const root = cmd.orgId ? db.collection('organizations').doc(cmd.orgId) : db.collection('users').doc(user.uid);

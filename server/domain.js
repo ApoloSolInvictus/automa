@@ -72,6 +72,10 @@ export function parseCommand(body) {
     const name = text(body.name, 'Nombre de organización', 120);
     return { action: body.action, name };
   }
+  if (body.action === 'seedDemo' || body.action === 'clearDemo') {
+    const orgId = body.orgId == null ? null : organizationId(body.orgId);
+    return { action: body.action, orgId };
+  }
   if (body.action === 'organizationInvite') {
     const orgId = organizationId(body.orgId);
     const email = text(body.email, 'Correo', 254).toLowerCase();
