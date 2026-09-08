@@ -1,10 +1,6 @@
 import { InputError, parseCommand, planFollowUp } from '../server/domain.js';
-import { createRequire } from 'node:module';
 
-const require = createRequire(`${process.cwd()}/api/business.js`);
-const firebaseAdminApp = require('firebase-admin/app');
-const firebaseAdminAuth = require('firebase-admin/auth');
-const firebaseAdminFirestore = require('firebase-admin/firestore');
+const loadModule = specifier => new Function('name', 'return import(name);')(specifier);
 
 async function services() {
   let { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
@@ -22,9 +18,14 @@ async function services() {
   const normalizedProjectId = clean(projectId);
   const normalizedClientEmail = clean(clientEmail);
   const normalizedPrivateKey = clean(privateKey).replace(/\r/g, '');
-  const { cert: adminCert, getApps: adminGetApps, initializeApp: adminInitializeApp } = firebaseAdminApp;
-  const { getAuth: adminGetAuth } = firebaseAdminAuth;
-  const { getFirestore: adminGetFirestore, FieldValue: adminFieldValue } = firebaseAdminFirestore;
+  let adminApp, adminCert, adminGetApps, adminInitializeApp, adminGetAuth, adminGetFirestore, adminFieldValue;
+  try {
+    ({ cert: adminCert, getApps: adminGetApps, initializeApp: adminInitializeApp } = await loadModule('firebase-admin/app'));
+    ({ getAuth: adminGetAuth } = await loadModule('firebase-admin/auth'));
+    ({ getFirestore: adminGetFirestore, FieldValue: adminFieldValue } = await loadModule('firebase-admin/firestore'));
+  } catch (error) {
+    throw Object.assign(new Error('FIREBASE_ADMIN_SDK_LOAD'), { code: 'firebase_admin_sdk_load', cause: error });
+  }
   try { adminApp = adminGetApps()[0] || adminInitializeApp({ credential: adminCert({ projectId: normalizedProjectId, clientEmail: normalizedClientEmail, privateKey: normalizedPrivateKey }) }); }
   catch (error) { throw Object.assign(new Error('FIREBASE_ADMIN_CREDENTIALS'), { code: 'firebase_admin_credentials', cause: error }); }
   return { auth: adminGetAuth(adminApp), db: adminGetFirestore(adminApp), FieldValue: adminFieldValue };
@@ -43,6 +44,10 @@ export default async function handler(req, res) {
       console.error('Firebase Admin initialization failed', { code: error?.code || error?.message || 'firebase_admin_init_failed' });
       if (error?.message === 'SERVER_NOT_CONFIGURED') return res.status(503).json({ error: 'Firebase Admin is not configured in Vercel. Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY.', code: 'firebase_server_not_configured' });
       if (error?.code === 'firebase_admin_credentials') return res.status(503).json({ error: 'Firebase Admin rejected the service account. Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY.', code: 'firebase_admin_credentials' });
+      if (error?.code === 'firebase_admin_sdk_load') {
+        const reason = String(error?.cause?.code || error?.cause?.name || '').replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 80);
+        return res.status(503).json({ error: `Firebase Admin SDK could not load in the Vercel function${reason ? ` (${reason})` : ''}.`, code: 'firebase_admin_sdk_load' });
+      }
       return res.status(503).json({ error: 'Firebase Admin could not initialize in Vercel. Check the service account variables and private key format.', code: 'firebase_admin_init_failed' });
     }
     let user;
