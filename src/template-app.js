@@ -6,7 +6,7 @@ import {
 } from 'firebase/auth';
 import { getFirestore, collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { OPENAI_MODELS, DEFAULT_OPENAI_MODEL, modelLabel } from '../shared/models.js';
-import { getDefaultAgent } from '../shared/agents.js';
+import { DEFAULT_AGENTS, getDefaultAgent } from '../shared/agents.js';
 
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -134,15 +134,27 @@ function modal(title, fields, onSave) {
   const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#0009;z-index:3000;display:grid;place-items:center;padding:20px';
   const box = document.createElement('div'); box.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:24px;width:min(520px,100%)';
   const controls = fields.map(f => {
+    if (f.type === 'note') return `<div class="mb-3 p-3" style="background:var(--bg3);border:1px solid var(--bd);border-radius:10px;color:var(--tx2);font-size:.8rem;line-height:1.5">${escapeHtml(f.value || '')}</div>`;
     const label = `<label class="olbl">${escapeHtml(f.label)}</label>`;
     if (f.type === 'select') return `${label}<select class="oinp mb-3" data-field="${escapeHtml(f.key)}">${f.options.map(option => `<option value="${escapeHtml(option.value)}" ${option.value === f.value ? 'selected' : ''}>${escapeHtml(option.label)}${option.description ? ` — ${escapeHtml(option.description)}` : ''}</option>`).join('')}</select>`;
     if (f.type === 'textarea') return `${label}<textarea class="oinp mb-3" data-field="${escapeHtml(f.key)}" rows="${f.rows || 4}" placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(f.value || '')}</textarea>`;
-    return `${label}<input class="oinp mb-3" data-field="${escapeHtml(f.key)}" value="${escapeHtml(f.value || '')}" placeholder="${escapeHtml(f.placeholder || '')}">`;
+    return `${label}<input class="oinp mb-3" data-field="${escapeHtml(f.key)}" value="${escapeHtml(f.value || '')}" placeholder="${escapeHtml(f.placeholder || '')}"${f.readonly ? ' readonly' : ''}>`;
   }).join('');
   box.innerHTML = `<h4 style="margin-bottom:18px">${escapeHtml(title)}</h4>${controls}<div class="d-flex gap-2 justify-content-end"><button class="boc btn" data-cancel>Cancel</button><button class="bgrd btn" data-save>Save</button></div>`;
   wrap.append(box); document.body.append(wrap); box.querySelector('[data-cancel]').onclick = () => wrap.remove(); box.querySelector('[data-save]').onclick = async () => { const data = {}; box.querySelectorAll('[data-field]').forEach(i => data[i.dataset.field] = i.value.trim()); try { await onSave(data); wrap.remove(); } catch (e) { alert(e.message); } }; return wrap;
 }
 const modelFields = (value = DEFAULT_OPENAI_MODEL) => [{ key: 'model', label: 'OpenAI model', type: 'select', value, options: OPENAI_MODELS }];
+const telegramAgentOptions = Object.entries(DEFAULT_AGENTS).map(([value, agent]) => ({ value, label: `${agent.name} · ${modelLabel(agent.model)}` }));
+function telegramFields(integration = {}) {
+  return [
+    { type: 'note', value: 'The bot token and webhook secret stay in Vercel environment variables. This form stores only Telegram metadata and the OpenAI agent selected for replies.' },
+    { key: 'botUsername', label: 'Telegram bot', value: integration.botUsername || '@WSTUDIO3DBot', placeholder: '@WSTUDIO3DBot' },
+    { key: 'businessProfile', label: 'Telegram Business profile', value: integration.businessProfile || '@wstudiio3d', placeholder: '@wstudiio3d' },
+    { key: 'agentId', label: 'Replying agent', type: 'select', value: integration.agentId || 'support-bot-v2-1', options: telegramAgentOptions },
+    { key: 'status', label: 'Connection status', type: 'select', value: integration.status || 'Needs setup', options: [{ value: 'Needs setup', label: 'Needs setup' }, { value: 'Connected', label: 'Connected' }, { value: 'Paused', label: 'Paused' }] },
+    { key: 'webhookUrl', label: 'Webhook URL', value: integration.webhookUrl || `${window.location.origin}/api/telegram`, readonly: true }
+  ];
+}
 function agentFields(agent = {}) {
   return [
     { key: 'name', label: 'Agent name', value: agent.name || '', placeholder: 'Support Agent' },
@@ -177,7 +189,15 @@ function wireWorkspace() {
     const id = card.dataset.agentId; const seed = getDefaultAgent(id) || {};
     card.querySelectorAll('button').forEach(btn => { if (btn.textContent.includes('Configure')) btn.addEventListener('click', () => openAgentEditor(seed, id)); if (btn.textContent.includes('View')) btn.addEventListener('click', () => openAgentTest(seed, id)); });
   });
-  document.querySelectorAll('#sec-integrations button').forEach(btn => { if (btn.textContent.includes('Configure')) btn.addEventListener('click', () => modal('Configure Integration', [{ key: 'status', label: 'Status', value: 'Connected' }, { key: 'notes', label: 'Notes' }], data => callBusiness({ action: 'saveEntity', collection: 'integrations', data }))); });
+  document.querySelectorAll('#sec-integrations button').forEach(btn => {
+    if (!btn.textContent.includes('Configure')) return;
+    const card = btn.closest('[data-integration-id]');
+    if (card?.dataset.integrationId === 'telegram') {
+      btn.addEventListener('click', () => modal('Configure Telegram', telegramFields(), data => callBusiness({ action: 'saveEntity', collection: 'integrations', id: 'telegram', data: { ...data, provider: 'telegram' } })));
+      return;
+    }
+    btn.addEventListener('click', () => modal('Configure Integration', [{ key: 'status', label: 'Status', value: 'Connected' }, { key: 'notes', label: 'Notes' }], data => callBusiness({ action: 'saveEntity', collection: 'integrations', data })));
+  });
 }
 function subscribe(user) {
   const run = ++generation;
