@@ -6,7 +6,7 @@ test('only owner reads allowed collections; all browser writes and cross-account
  const env = await initializeTestEnvironment({ projectId:'demo-automa',firestore:{rules:await readFile('firestore.rules','utf8'),host:'127.0.0.1',port:8080} });
  try {
   const owner=env.authenticatedContext('owner').firestore(), other=env.authenticatedContext('other').firestore(), guest=env.unauthenticatedContext().firestore();
-  for (const name of ['leads','tasks','runs','settings']) {
+  for (const name of ['leads','tasks','runs','settings','agents','automations','integrations','companies','contacts','opportunities','activities']) {
    const path=`users/owner/${name}/one`;
    await assertSucceeds(getDoc(doc(owner,path)));
    await assertFails(getDoc(doc(other,path)));

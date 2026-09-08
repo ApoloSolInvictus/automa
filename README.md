@@ -1,6 +1,6 @@
 # Automa
 
-Automa es un espacio de trabajo para pequeños negocios. La primera versión conecta Firebase, Vercel y un flujo determinista de seguimiento:
+Automa es un espacio de trabajo para negocios de cualquier tamaño. El dashboard reúne CRM, agentes OpenAI y automatizaciones sobre Firebase y Vercel:
 
 ```text
 prospecto → función segura de Vercel → regla del negocio → Firestore → tarea
@@ -14,17 +14,18 @@ La plantilla visual original de NexusAI se conserva en [`demo.html`](demo.html),
 | --- | --- | --- |
 | Registro, login, recuperación y logout | Listo | Firebase Authentication con correo y contraseña |
 | Dashboard | Listo | Firestore en tiempo real, separado por UID |
+| CRM multiempresa | Listo | Compañías, contactos, oportunidades, actividades y pipeline por UID |
 | Prospectos | Listo | Nombre, correo y valor estimado en USD |
 | Automatización | Listo | Crea una tarea de seguimiento con vencimiento configurable |
 | Historial | Listo | Registra si la tarea fue creada u omitida |
 | Completar tareas | Listo | Completar y reabrir desde el dashboard |
 | IA y agentes | Listo | El chat y las pruebas de agentes usan OpenAI desde funciones de Vercel; cada agente puede elegir un modelo |
 | Telegram | Preparado | `/api/telegram` recibe mensajes, ejecuta el agente y responde; requiere token y webhook |
-| WhatsApp, email, Slack, CRM y pagos | Pendiente | Requieren integraciones y credenciales adicionales |
+| WhatsApp, email, Slack y pagos | Pendiente | Requieren integraciones y credenciales adicionales |
 | Ejecución al vencer una tarea | Pendiente | La fecha se guarda; todavía no existe un cron que envíe mensajes |
 | Equipos y organizaciones | Pendiente | Esta versión tiene un espacio individual por usuario |
 
-La automatización no necesita Claude ni OpenAI para crear una tarea. El servidor aplica la regla y escribe en Firestore. El chat del dashboard sí puede usar OpenAI, pero solo desde la función de servidor y con `OPENAI_API_KEY` configurada. Una IA se debe usar cuando el proceso necesite comprender lenguaje: clasificar un prospecto, resumir una conversación, extraer campos o preparar una respuesta. La IA propone o clasifica; el código mantiene los permisos, límites, reintentos, acciones y auditoría.
+La automatización no necesita Claude ni OpenAI para crear una tarea. El servidor aplica la regla y escribe en Firestore. El chat y el Copilot del CRM sí usan OpenAI solo desde funciones de servidor y con `OPENAI_API_KEY` configurada. Una IA se debe usar cuando el proceso necesite comprender lenguaje: clasificar un prospecto, resumir una conversación, extraer campos o preparar una respuesta. La IA propone o clasifica; el código mantiene los permisos, límites, reintentos, acciones y auditoría.
 
 ## Requisitos
 
@@ -127,9 +128,24 @@ users/{uid}/runs/{requestId}
 users/{uid}/settings/followUp
 users/{uid}/internal/{YYYY-MM-DD}
 users/{uid}/agents/{agentId}
+users/{uid}/companies/{companyId}
+users/{uid}/contacts/{contactId}
+users/{uid}/opportunities/{opportunityId}
+users/{uid}/activities/{activityId}
 ```
 
 El servidor crea prospecto, tarea, historial y contador diario en una transacción. El mismo `requestId` evita duplicar un prospecto si el navegador reintenta. El límite actual es de 200 prospectos por cuenta y día UTC. El dashboard muestra como máximo los últimos 100 documentos por colección.
+
+### 2.6 CRM multiempresa
+
+En **Dashboard → CRM** cada cuenta autenticada obtiene un espacio aislado para administrar cualquier tipo de empresa. Puedes crear y editar:
+
+- **Companies:** nombre, industria, tamaño, sitio web, propietario y estado.
+- **Contacts:** datos de contacto, cargo, compañía y estado.
+- **Opportunities:** pipeline `Lead → Qualified → Proposal → Won/Lost`, valor, probabilidad, próximo paso y fecha estimada.
+- **Activities:** llamadas, correos, reuniones, tareas y notas con vencimiento.
+
+El buscador y el filtro de etapa trabajan sobre los registros en tiempo real. **AI CRM Copilot** envía un resumen acotado de esos registros al agente OpenAI elegido para priorizar el día, resumir el pipeline o redactar un seguimiento. La respuesta se muestra para revisión; no envía mensajes ni modifica sistemas externos por sí sola. Los botones **Add Company**, **Add Contact**, **New Opportunity** y **Log Activity** guardan mediante `/api/business` después de validar la sesión y los campos permitidos.
 
 ## 3. Ejecutar localmente
 
@@ -392,8 +408,8 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 ## 9. Archivos importantes
 
 - [`index.html`](index.html): aplicación real de Automa.
-- [`src/app.js`](src/app.js): Authentication, listeners y dashboard.
-- [`src/app.css`](src/app.css): interfaz responsive.
+- [`src/template-app.js`](src/template-app.js): Authentication, listeners, CRM y conexión con OpenAI.
+- [`css/style.css`](css/style.css): interfaz responsive y estilos del dashboard.
 - [`api/business.js`](api/business.js): función segura de Vercel y Firebase Admin.
 - [`api/chat.js`](api/chat.js): autenticación REST y conexión aislada con OpenAI.
 - [`api/telegram.js`](api/telegram.js): webhook autenticado para WSTUDIO3DBot.

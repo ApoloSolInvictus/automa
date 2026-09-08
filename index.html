@@ -633,6 +633,7 @@
             <div class="db-nav">
                <div class="db-nav-section">Main</div>
                <button class="db-nl active" onclick="dbNav('overview',this)"><i class="fa-solid fa-gauge-high"></i> Overview</button>
+               <button class="db-nl" onclick="dbNav('crm',this)"><i class="fa-solid fa-address-book"></i> CRM <span class="db-badge" style="background:#34d399">New</span></button>
                <button class="db-nl" onclick="dbNav('agents',this)"><i class="fa-solid fa-robot"></i> AI Agents <span class="db-badge">4</span></button>
                <button class="db-nl" onclick="dbNav('chat',this)"><i class="fa-regular fa-comments"></i> AI Chat <span class="db-badge" style="background:#34d399">Live</span></button>
                <button class="db-nl" onclick="dbNav('analytics',this)"><i class="fa-solid fa-chart-line"></i> Analytics</button>
@@ -855,6 +856,65 @@
                            </div>
                         </div>
                      </div>
+                  </div>
+               </div>
+               <!-- -- CRM WORKSPACE -- -->
+               <div class="db-section" id="sec-crm">
+                  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+                     <div>
+                        <h4 style="font-size:1.4rem;font-weight:700;margin-bottom:4px">CRM Workspace</h4>
+                        <p style="font-size:.875rem;color:var(--tx3);margin:0">A flexible customer and relationship hub for any business.</p>
+                     </div>
+                     <div class="d-flex gap-2 flex-wrap">
+                        <button class="boc btn px-3 py-2" data-crm-action="activity" style="font-size:.82rem"><i class="fa-regular fa-calendar-plus me-1"></i>Log Activity</button>
+                        <button class="boc btn px-3 py-2" data-crm-action="contact" style="font-size:.82rem"><i class="fa-solid fa-user-plus me-1"></i>Add Contact</button>
+                        <button class="bgrd btn px-3 py-2" data-crm-action="company" style="font-size:.82rem"><i class="fa-solid fa-building me-1"></i>Add Company</button>
+                     </div>
+                  </div>
+                  <div class="crm-banner mb-4">
+                     <div class="crm-banner-icon"><i class="fa-solid fa-sparkles"></i></div>
+                     <div style="flex:1">
+                        <div style="font-weight:700;margin-bottom:4px">One CRM for every company, team and workflow</div>
+                        <div style="font-size:.8rem;color:var(--tx2);line-height:1.55">Keep companies, contacts, opportunities and follow-ups in one place. Your OpenAI agents can summarize accounts, draft next steps and surface the work that matters.</div>
+                     </div>
+                     <button class="bgrd btn px-3 py-2" data-crm-action="opportunity" style="font-size:.8rem;white-space:nowrap"><i class="fa-solid fa-plus me-1"></i>New Opportunity</button>
+                  </div>
+                  <div class="row g-3 mb-4">
+                     <div class="col-6 col-xl-3"><div class="db-stat-card"><div class="crm-kpi-icon" style="background:rgba(139,92,246,.14);color:#a78bfa"><i class="fa-solid fa-building"></i></div><div class="db-stat-val" id="crmStatCompanies">0</div><div class="db-stat-lbl">Companies</div></div></div>
+                     <div class="col-6 col-xl-3"><div class="db-stat-card"><div class="crm-kpi-icon" style="background:rgba(52,211,153,.12);color:#34d399"><i class="fa-solid fa-users"></i></div><div class="db-stat-val" id="crmStatContacts">0</div><div class="db-stat-lbl">Contacts</div></div></div>
+                     <div class="col-6 col-xl-3"><div class="db-stat-card"><div class="crm-kpi-icon" style="background:rgba(96,165,250,.12);color:#60a5fa"><i class="fa-solid fa-bullseye"></i></div><div class="db-stat-val" id="crmStatOpportunities">0</div><div class="db-stat-lbl">Open Opportunities</div></div></div>
+                     <div class="col-6 col-xl-3"><div class="db-stat-card"><div class="crm-kpi-icon" style="background:rgba(251,191,36,.12);color:#fbbf24"><i class="fa-regular fa-clock"></i></div><div class="db-stat-val" id="crmStatActivities">0</div><div class="db-stat-lbl">Pending Activities</div></div></div>
+                  </div>
+                  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                     <div class="crm-search"><i class="fa-solid fa-magnifying-glass"></i><input id="crmSearch" type="search" placeholder="Search companies, contacts and opportunities..."></div>
+                     <select class="crm-select" id="crmStageFilter" aria-label="Filter opportunities by stage"><option value="all">All pipeline stages</option><option value="lead">Lead</option><option value="qualified">Qualified</option><option value="proposal">Proposal</option><option value="won">Won</option><option value="lost">Lost</option></select>
+                     <select class="crm-select" id="crmAgentSelect" aria-label="CRM AI agent"><option value="support-bot-v2-1">Customer Support Agent · Terra</option><option value="sales-qualifier">Contract Coordinator · Sol</option><option value="data-analyzer">Business Flow Analyst · Luna</option><option value="email-automator">Follow-up Agent · Terra</option></select>
+                  </div>
+                  <div class="row g-3 mb-4">
+                     <div class="col-xl-8">
+                        <div class="crm-panel h-100">
+                           <div class="d-flex align-items-center justify-content-between mb-3"><div><div class="crm-panel-title"><i class="fa-solid fa-chart-simple me-2" style="color:#a78bfa"></i>Opportunity Pipeline</div><div class="crm-panel-subtitle">Move from first conversation to a completed deal.</div></div><button class="boc btn py-1 px-2" data-crm-action="opportunity" style="font-size:.75rem">Add opportunity</button></div>
+                           <div class="crm-pipeline" id="crmPipeline">
+                              <div class="crm-stage" data-crm-stage="lead"><div class="crm-stage-head"><span>Lead</span><span class="crm-stage-count" data-crm-count="lead">0</span></div><div class="crm-stage-list" data-crm-stage-list="lead"><div class="crm-empty">No opportunities yet.</div></div></div>
+                              <div class="crm-stage" data-crm-stage="qualified"><div class="crm-stage-head"><span>Qualified</span><span class="crm-stage-count" data-crm-count="qualified">0</span></div><div class="crm-stage-list" data-crm-stage-list="qualified"><div class="crm-empty">No opportunities yet.</div></div></div>
+                              <div class="crm-stage" data-crm-stage="proposal"><div class="crm-stage-head"><span>Proposal</span><span class="crm-stage-count" data-crm-count="proposal">0</span></div><div class="crm-stage-list" data-crm-stage-list="proposal"><div class="crm-empty">No opportunities yet.</div></div></div>
+                              <div class="crm-stage" data-crm-stage="won"><div class="crm-stage-head"><span>Won</span><span class="crm-stage-count" data-crm-count="won">0</span></div><div class="crm-stage-list" data-crm-stage-list="won"><div class="crm-empty">No opportunities yet.</div></div></div>
+                              <div class="crm-stage" data-crm-stage="lost"><div class="crm-stage-head"><span>Lost</span><span class="crm-stage-count" data-crm-count="lost">0</span></div><div class="crm-stage-list" data-crm-stage-list="lost"><div class="crm-empty">No opportunities yet.</div></div></div>
+                           </div>
+                        </div>
+                     </div>
+                     <div class="col-xl-4">
+                        <div class="crm-panel h-100">
+                           <div class="crm-panel-title mb-1"><i class="fa-solid fa-wand-magic-sparkles me-2" style="color:#34d399"></i>AI CRM Copilot</div>
+                           <div class="crm-panel-subtitle mb-3">Use an OpenAI agent to turn CRM context into a clear next action.</div>
+                           <div class="d-grid gap-2"><button class="boc btn text-start py-2" data-crm-ai="prioritize" style="font-size:.8rem"><i class="fa-solid fa-ranking-star me-2" style="color:#fbbf24"></i>Prioritize today’s work</button><button class="boc btn text-start py-2" data-crm-ai="summary" style="font-size:.8rem"><i class="fa-solid fa-file-lines me-2" style="color:#a78bfa"></i>Summarize the pipeline</button><button class="boc btn text-start py-2" data-crm-ai="followup" style="font-size:.8rem"><i class="fa-solid fa-envelope me-2" style="color:#60a5fa"></i>Draft the next follow-up</button></div>
+                           <div class="crm-ai-note mt-3"><i class="fa-solid fa-shield-halved me-1"></i>Suggestions are grounded in the records shown here. Review before sending or changing external data.</div>
+                        </div>
+                     </div>
+                  </div>
+                  <div class="row g-3">
+                     <div class="col-lg-7"><div class="crm-panel"><div class="d-flex align-items-center justify-content-between mb-3"><div><div class="crm-panel-title"><i class="fa-solid fa-address-card me-2" style="color:#60a5fa"></i>Companies &amp; Contacts</div><div class="crm-panel-subtitle">Every relationship, owner and next step at a glance.</div></div><button class="boc btn py-1 px-2" data-crm-action="company" style="font-size:.75rem">Add company</button></div><div id="crmRecords" class="crm-records"><div class="crm-empty">Create a company or contact to start your CRM.</div></div></div></div>
+                     <div class="col-lg-5"><div class="crm-panel"><div class="d-flex align-items-center justify-content-between mb-3"><div><div class="crm-panel-title"><i class="fa-regular fa-calendar-check me-2" style="color:#fbbf24"></i>Upcoming Activities</div><div class="crm-panel-subtitle">Tasks and touchpoints that keep deals moving.</div></div><button class="boc btn py-1 px-2" data-crm-action="activity" style="font-size:.75rem">Log activity</button></div><div id="crmActivities" class="crm-activities"><div class="crm-empty">No activities scheduled.</div></div></div></div>
                   </div>
                </div>
                <!-- -- AI AGENTS -- -->

@@ -1,6 +1,14 @@
 import { isAllowedOpenAIModel } from '../shared/models.js';
 
 export class InputError extends Error {}
+const CRM_COLLECTIONS = ['companies', 'contacts', 'opportunities', 'activities'];
+const CRM_FIELDS = Object.freeze({
+  companies: ['name', 'industry', 'website', 'size', 'owner', 'status', 'notes'],
+  contacts: ['firstName', 'lastName', 'companyId', 'email', 'phone', 'role', 'status', 'notes'],
+  opportunities: ['name', 'companyId', 'contactId', 'stage', 'amount', 'probability', 'nextStep', 'owner', 'expectedClose', 'notes'],
+  activities: ['type', 'subject', 'companyId', 'contactId', 'opportunityId', 'dueDate', 'status', 'notes']
+});
+const CRM_ASSIST_TASKS = ['prioritize', 'summary', 'followup'];
 export function isAllowedTelegramWebhookUrl(value) {
   if (typeof value !== 'string' || !value.trim()) return false;
   try {
@@ -44,6 +52,14 @@ export function parseCommand(body) {
     });
     return { action: body.action, message, history };
   }
+  if (body.action === 'crmAssist') {
+    const task = text(body.task, 'Tarea CRM', 40);
+    if (!CRM_ASSIST_TASKS.includes(task)) throw new InputError('Tarea CRM inválida.');
+    const context = text(body.context, 'Contexto CRM', 7000);
+    const agentId = body.agentId == null ? null : text(body.agentId, 'Agente', 80);
+    if (agentId && !/^[a-zA-Z0-9_-]{1,80}$/.test(agentId)) throw new InputError('Agente inválido.');
+    return { action: body.action, task, context, agentId };
+  }
   if (body.action === 'runAgent') {
     const agentId = text(body.agentId, 'Agente', 80);
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(agentId)) throw new InputError('Agente inválido.');
@@ -58,7 +74,7 @@ export function parseCommand(body) {
   }
   if (body.action === 'saveEntity') {
     const collection = text(body.collection, 'Colección', 40);
-    if (!['agents', 'automations', 'integrations'].includes(collection)) throw new InputError('Colección inválida.');
+    if (!['agents', 'automations', 'integrations', ...CRM_COLLECTIONS].includes(collection)) throw new InputError('Colección inválida.');
     const id = body.id == null ? null : text(body.id, 'Identificador', 80);
     if (id && !/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw new InputError('Identificador inválido.');
     if (!body.data || typeof body.data !== 'object' || Array.isArray(body.data)) throw new InputError('Datos inválidos.');
@@ -78,6 +94,18 @@ export function parseCommand(body) {
       if (data.instructions && data.instructions.length > 6000) throw new InputError('Instrucciones de agente inválidas.');
       if (data.model && !isAllowedOpenAIModel(data.model)) throw new InputError('Modelo OpenAI no permitido.');
       if (data.status && !['enabled', 'paused'].includes(data.status)) throw new InputError('Estado de agente inválido.');
+    }
+    if (CRM_COLLECTIONS.includes(collection)) {
+      const allowedKeys = CRM_FIELDS[collection];
+      if (Object.keys(data).some(key => !allowedKeys.includes(key))) throw new InputError('Campo CRM no permitido.');
+      const required = collection === 'companies' ? ['name'] : collection === 'contacts' ? ['firstName', 'lastName'] : collection === 'opportunities' ? ['name', 'stage'] : ['subject', 'type'];
+      if (required.some(key => !data[key])) throw new InputError('Faltan datos CRM obligatorios.');
+      if (data.name && data.name.length > 160) throw new InputError('Nombre CRM inválido.');
+      if ((data.firstName && data.firstName.length > 80) || (data.lastName && data.lastName.length > 80)) throw new InputError('Nombre de contacto inválido.');
+      if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) throw new InputError('Correo CRM inválido.');
+      if (data.website && !/^https:\/\//i.test(data.website)) throw new InputError('Sitio web CRM inválido.');
+      if (collection === 'opportunities' && data.stage && !['lead', 'qualified', 'proposal', 'won', 'lost'].includes(data.stage)) throw new InputError('Etapa de oportunidad inválida.');
+      if (collection === 'activities' && data.type && !['call', 'email', 'meeting', 'task', 'note'].includes(data.type)) throw new InputError('Tipo de actividad inválido.');
     }
     if (collection === 'integrations' && data.provider?.toLowerCase() === 'telegram' && data.webhookUrl && !isAllowedTelegramWebhookUrl(data.webhookUrl)) throw new InputError('Webhook URL de Telegram inválida. Usa una URL HTTPS de Automa/Vercel que termine en /api/telegram.');
     return { action: body.action, collection, id, data };

@@ -2,7 +2,7 @@ import { InputError, parseCommand } from '../server/domain.js';
 import { DEFAULT_OPENAI_MODEL, isAllowedOpenAIModel } from '../shared/models.js';
 
 const systemInstructions = [
-  'You are NexusAI, a concise business automation assistant.',
+  'You are Automa, a concise business automation assistant from W Studio 3D.',
   'Answer in English.',
   'Help with support analytics, AI agents, workflow automation, and business metrics.',
   'Never claim that you executed a dashboard action.',

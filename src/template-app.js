@@ -15,6 +15,7 @@ const config = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {};
+const crmState = { companies: [], contacts: [], opportunities: [], activities: [] };
 
 const $ = id => document.getElementById(id);
 function errorMessage(error) {
@@ -129,6 +130,73 @@ function renderEntities(sectionId, rows) {
     return item;
   }));
 }
+const crmStageLabels = Object.freeze({ lead: 'Lead', qualified: 'Qualified', proposal: 'Proposal', won: 'Won', lost: 'Lost' });
+const crmKindLabels = Object.freeze({ companies: 'Company', contacts: 'Contact', opportunities: 'Opportunity', activities: 'Activity' });
+function crmCompanyName(id) { return crmState.companies.find(company => company.id === id)?.name || 'No company'; }
+function crmContactName(id) {
+  const contact = crmState.contacts.find(item => item.id === id);
+  return contact ? `${contact.firstName || ''} ${contact.lastName || ''}`.trim() : 'No contact';
+}
+function crmFormatAmount(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0 ? `$${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—';
+}
+function crmMatches(row, search) {
+  if (!search) return true;
+  return Object.values(row).some(value => typeof value === 'string' && value.toLowerCase().includes(search));
+}
+function crmActionButton(label, icon, onClick) {
+  const button = document.createElement('button');
+  button.className = 'boc btn py-1 px-2';
+  button.style.cssText = 'font-size:.68rem;border-radius:8px';
+  button.innerHTML = `<i class="fa-solid ${icon} me-1"></i>${label}`;
+  button.addEventListener('click', event => { event.stopPropagation(); onClick(); });
+  return button;
+}
+function renderCrm() {
+  const search = ($('crmSearch')?.value || '').trim().toLowerCase();
+  const stageFilter = $('crmStageFilter')?.value || 'all';
+  const companies = crmState.companies.filter(row => crmMatches(row, search));
+  const contacts = crmState.contacts.filter(row => crmMatches(row, search));
+  const opportunities = crmState.opportunities.filter(row => crmMatches(row, search) && (stageFilter === 'all' || row.stage === stageFilter));
+  const activities = crmState.activities.filter(row => crmMatches(row, search));
+  const setText = (id, value) => { const element = $(id); if (element) element.textContent = String(value); };
+  setText('crmStatCompanies', crmState.companies.length);
+  setText('crmStatContacts', crmState.contacts.length);
+  setText('crmStatOpportunities', crmState.opportunities.filter(row => !['won', 'lost'].includes(row.stage)).length);
+  setText('crmStatActivities', crmState.activities.filter(row => row.status !== 'done' && row.status !== 'completed').length);
+  document.querySelectorAll('[data-crm-stage-list]').forEach(list => {
+    const stage = list.dataset.crmStageList;
+    const stageRows = opportunities.filter(row => row.stage === stage);
+    const count = document.querySelector(`[data-crm-count="${stage}"]`); if (count) count.textContent = stageRows.length;
+    list.replaceChildren(...(stageRows.length ? stageRows.map(row => {
+      const card = document.createElement('div'); card.className = 'crm-op-card';
+      const top = document.createElement('div'); top.className = 'd-flex align-items-start justify-content-between gap-2';
+      const main = document.createElement('div'); main.className = 'crm-op-main';
+      const name = document.createElement('span'); name.className = 'crm-op-name'; name.textContent = row.name || 'Untitled opportunity';
+      const meta = document.createElement('span'); meta.className = 'crm-op-meta'; meta.textContent = `${crmCompanyName(row.companyId)} · ${row.nextStep || 'Next step not set'}`;
+      main.append(name, meta); const amount = document.createElement('span'); amount.className = 'crm-op-amount'; amount.textContent = crmFormatAmount(row.amount); top.append(main, amount); card.append(top);
+      const actions = document.createElement('div'); actions.className = 'd-flex gap-1 mt-2'; actions.append(crmActionButton('Edit', 'fa-pencil', () => openCrmEditor('opportunities', row.id, row))); card.append(actions);
+      return card;
+    }) : [Object.assign(document.createElement('div'), { className: 'crm-empty', textContent: 'No opportunities yet.' })]));
+  });
+  const records = $('crmRecords');
+  if (records) {
+    const rows = [
+      ...companies.map(company => ({ type: 'Company', name: company.name, meta: [company.industry, company.owner, company.status].filter(Boolean).join(' · '), id: company.id, collection: 'companies', data: company })),
+      ...contacts.map(contact => ({ type: 'Contact', name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Unnamed contact', meta: [crmCompanyName(contact.companyId), contact.role, contact.email].filter(Boolean).join(' · '), id: contact.id, collection: 'contacts', data: contact }))
+    ];
+    records.replaceChildren(...(rows.length ? rows.slice(0, 20).map(row => { const item = document.createElement('div'); item.className = 'crm-record'; const main = document.createElement('div'); main.className = 'crm-record-main'; const name = document.createElement('span'); name.className = 'crm-record-name'; name.textContent = row.name; const meta = document.createElement('span'); meta.className = 'crm-record-meta'; meta.textContent = `${row.type} · ${row.meta || 'No details yet'}`; main.append(name, meta); item.append(main, crmActionButton('Edit', 'fa-pencil', () => openCrmEditor(row.collection, row.id, row.data))); return item; }) : [Object.assign(document.createElement('div'), { className: 'crm-empty', textContent: 'Create a company or contact to start your CRM.' })]));
+  }
+  const activityList = $('crmActivities');
+  if (activityList) {
+    activityList.replaceChildren(...(activities.length ? activities.slice(0, 12).map(activity => { const item = document.createElement('div'); item.className = 'crm-activity'; const dot = document.createElement('span'); dot.className = 'crm-activity-dot'; const main = document.createElement('div'); main.style.minWidth = '0'; const subject = document.createElement('span'); subject.className = 'crm-record-name'; subject.textContent = activity.subject || 'CRM activity'; const meta = document.createElement('span'); meta.className = 'crm-record-meta'; meta.textContent = `${activity.type || 'task'} · ${crmCompanyName(activity.companyId)}${activity.dueDate ? ` · ${activity.dueDate}` : ''}`; main.append(subject, meta); item.append(dot, main); item.append(crmActionButton(activity.status === 'done' ? 'Done' : 'Edit', activity.status === 'done' ? 'fa-check' : 'fa-pencil', () => openCrmEditor('activities', activity.id, activity))); return item; }) : [Object.assign(document.createElement('div'), { className: 'crm-empty', textContent: 'No activities scheduled.' })]));
+  }
+}
+function resetCrmState() {
+  Object.keys(crmState).forEach(key => { crmState[key] = []; });
+  renderCrm();
+}
 async function callBusiness(body) {
   const token = await auth.currentUser?.getIdToken(); if (!token) throw new Error('AUTH');
   const response = await fetch('/api/business', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
@@ -143,7 +211,8 @@ function modal(title, fields, onSave) {
     const label = `<label class="olbl">${escapeHtml(f.label)}</label>`;
     if (f.type === 'select') return `${label}<select class="oinp mb-3" data-field="${escapeHtml(f.key)}">${f.options.map(option => `<option value="${escapeHtml(option.value)}" ${option.value === f.value ? 'selected' : ''}>${escapeHtml(option.label)}${option.description ? ` — ${escapeHtml(option.description)}` : ''}</option>`).join('')}</select>`;
     if (f.type === 'textarea') return `${label}<textarea class="oinp mb-3" data-field="${escapeHtml(f.key)}" rows="${f.rows || 4}" placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(f.value || '')}</textarea>`;
-    return `${label}<input type="${f.type === 'url' ? 'url' : 'text'}" class="oinp mb-3" data-field="${escapeHtml(f.key)}" value="${escapeHtml(f.value || '')}" placeholder="${escapeHtml(f.placeholder || '')}"${f.readonly ? ' readonly' : ''}>`;
+    const inputType = ['url', 'email', 'date', 'number', 'tel'].includes(f.type) ? f.type : 'text';
+    return `${label}<input type="${inputType}" class="oinp mb-3" data-field="${escapeHtml(f.key)}" value="${escapeHtml(f.value || '')}" placeholder="${escapeHtml(f.placeholder || '')}"${f.readonly ? ' readonly' : ''}>`;
   }).join('');
   box.innerHTML = `<h4 style="margin-bottom:18px">${escapeHtml(title)}</h4>${controls}<div class="d-flex gap-2 justify-content-end"><button class="boc btn" data-cancel>Cancel</button><button class="bgrd btn" data-save>Save</button></div>`;
   wrap.append(box); document.body.append(wrap); box.querySelector('[data-cancel]').onclick = () => wrap.remove(); box.querySelector('[data-save]').onclick = async () => { const data = {}; box.querySelectorAll('[data-field]').forEach(i => data[i.dataset.field] = i.value.trim()); try { await onSave(data); wrap.remove(); } catch (e) { alert(e.message); } }; return wrap;
@@ -241,6 +310,77 @@ window.openAutomationBlueprint = function openAutomationBlueprint(key) {
     { key: 'status', label: 'Status', type: 'select', value: 'draft', options: [{ value: 'draft', label: 'Draft' }, { value: 'enabled', label: 'Enabled' }] }
   ], data => callBusiness({ action: 'saveEntity', collection: 'automations', data: { ...data, blueprint: key } }));
 };
+function crmOptions(rows, value, label) {
+  return [{ value: '', label: `No ${label}` }, ...rows.map(row => ({ value: row.id, label: label === 'company' || label === 'opportunity' ? row.name : `${row.firstName || ''} ${row.lastName || ''}`.trim() || 'Unnamed contact' }))].map(option => ({ ...option, selected: option.value === value }));
+}
+function crmFields(collection, seed = {}) {
+  if (collection === 'companies') return [
+    { key: 'name', label: 'Company name', value: seed.name || '', placeholder: 'Acme Manufacturing' },
+    { key: 'industry', label: 'Industry', value: seed.industry || '', placeholder: 'Professional services' },
+    { key: 'website', label: 'Website', type: 'url', value: seed.website || '', placeholder: 'https://company.com' },
+    { key: 'size', label: 'Company size', type: 'select', value: seed.size || 'small', options: [{ value: 'solo', label: 'Solo / freelancer' }, { value: 'small', label: 'Small business' }, { value: 'mid', label: 'Mid-market' }, { value: 'enterprise', label: 'Enterprise' }] },
+    { key: 'owner', label: 'Relationship owner', value: seed.owner || '', placeholder: 'Team or person responsible' },
+    { key: 'status', label: 'Status', type: 'select', value: seed.status || 'active', options: [{ value: 'active', label: 'Active' }, { value: 'prospect', label: 'Prospect' }, { value: 'inactive', label: 'Inactive' }] },
+    { key: 'notes', label: 'Notes', type: 'textarea', rows: 3, value: seed.notes || '', placeholder: 'Context, goals and relationship notes' }
+  ];
+  if (collection === 'contacts') return [
+    { key: 'firstName', label: 'First name', value: seed.firstName || '', placeholder: 'Alex' },
+    { key: 'lastName', label: 'Last name', value: seed.lastName || '', placeholder: 'Morgan' },
+    { key: 'companyId', label: 'Company', type: 'select', value: seed.companyId || '', options: crmOptions(crmState.companies, seed.companyId, 'company') },
+    { key: 'email', label: 'Work email', type: 'email', value: seed.email || '', placeholder: 'alex@company.com' },
+    { key: 'phone', label: 'Phone', type: 'tel', value: seed.phone || '', placeholder: '+1 555 0100' },
+    { key: 'role', label: 'Role', value: seed.role || '', placeholder: 'Operations director' },
+    { key: 'status', label: 'Status', type: 'select', value: seed.status || 'active', options: [{ value: 'active', label: 'Active' }, { value: 'lead', label: 'Lead' }, { value: 'inactive', label: 'Inactive' }] },
+    { key: 'notes', label: 'Notes', type: 'textarea', rows: 3, value: seed.notes || '', placeholder: 'Preferences and relevant context' }
+  ];
+  if (collection === 'opportunities') return [
+    { key: 'name', label: 'Opportunity name', value: seed.name || '', placeholder: 'Operations automation project' },
+    { key: 'companyId', label: 'Company', type: 'select', value: seed.companyId || '', options: crmOptions(crmState.companies, seed.companyId, 'company') },
+    { key: 'contactId', label: 'Primary contact', type: 'select', value: seed.contactId || '', options: crmOptions(crmState.contacts, seed.contactId, 'contact') },
+    { key: 'stage', label: 'Pipeline stage', type: 'select', value: seed.stage || 'lead', options: Object.entries(crmStageLabels).map(([value, label]) => ({ value, label })) },
+    { key: 'amount', label: 'Estimated value', type: 'number', value: seed.amount || '', placeholder: '25000' },
+    { key: 'probability', label: 'Probability (%)', type: 'number', value: seed.probability || '', placeholder: '50' },
+    { key: 'nextStep', label: 'Next step', value: seed.nextStep || '', placeholder: 'Book a discovery call' },
+    { key: 'owner', label: 'Opportunity owner', value: seed.owner || '', placeholder: 'Sales or account team' },
+    { key: 'expectedClose', label: 'Expected close', type: 'date', value: seed.expectedClose || '' },
+    { key: 'notes', label: 'Notes', type: 'textarea', rows: 3, value: seed.notes || '', placeholder: 'Decision process and blockers' }
+  ];
+  return [
+    { key: 'type', label: 'Activity type', type: 'select', value: seed.type || 'task', options: [{ value: 'call', label: 'Call' }, { value: 'email', label: 'Email' }, { value: 'meeting', label: 'Meeting' }, { value: 'task', label: 'Task' }, { value: 'note', label: 'Note' }] },
+    { key: 'subject', label: 'Subject', value: seed.subject || '', placeholder: 'Follow up on proposal' },
+    { key: 'companyId', label: 'Company', type: 'select', value: seed.companyId || '', options: crmOptions(crmState.companies, seed.companyId, 'company') },
+    { key: 'contactId', label: 'Contact', type: 'select', value: seed.contactId || '', options: crmOptions(crmState.contacts, seed.contactId, 'contact') },
+    { key: 'opportunityId', label: 'Opportunity', type: 'select', value: seed.opportunityId || '', options: crmOptions(crmState.opportunities, seed.opportunityId, 'opportunity') },
+    { key: 'dueDate', label: 'Due date', type: 'date', value: seed.dueDate || '' },
+    { key: 'status', label: 'Status', type: 'select', value: seed.status || 'pending', options: [{ value: 'pending', label: 'Pending' }, { value: 'done', label: 'Done' }] },
+    { key: 'notes', label: 'Notes', type: 'textarea', rows: 3, value: seed.notes || '', placeholder: 'Outcome or preparation notes' }
+  ];
+}
+function showCrmNotice(title, message) {
+  const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#0009;z-index:3000;display:grid;place-items:center;padding:20px';
+  const box = document.createElement('div'); box.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:24px;width:min(620px,100%);max-height:80vh;overflow:auto';
+  box.innerHTML = `<h4 style="margin-bottom:14px">${escapeHtml(title)}</h4><div style="white-space:pre-wrap;color:var(--tx2);font-size:.85rem;line-height:1.65">${escapeHtml(message)}</div><div class="d-flex justify-content-end mt-4"><button class="bgrd btn" data-close>Close</button></div>`;
+  wrap.append(box); document.body.append(wrap); box.querySelector('[data-close]').onclick = () => wrap.remove(); return wrap;
+}
+function openCrmEditor(collection, id = null, seed = {}) {
+  const label = crmKindLabels[collection] || 'CRM record';
+  return modal(id ? `Edit ${label}` : `Add ${label}`, crmFields(collection, seed), data => callBusiness({ action: 'saveEntity', collection, ...(id ? { id } : {}), data }));
+}
+async function runCrmAssist(task) {
+  const button = document.querySelector(`[data-crm-ai="${task}"]`); if (button) button.disabled = true;
+  const project = (rows, fields) => rows.slice(0, 4).map(row => Object.fromEntries(fields.map(field => [field, String(row[field] ?? '').slice(0, 80)])));
+  const context = JSON.stringify({
+    companies: project(crmState.companies, ['name', 'industry', 'owner', 'status']),
+    contacts: project(crmState.contacts, ['firstName', 'lastName', 'companyId', 'role', 'email']),
+    opportunities: project(crmState.opportunities, ['name', 'companyId', 'stage', 'amount', 'nextStep', 'owner']),
+    activities: project(crmState.activities, ['type', 'subject', 'companyId', 'opportunityId', 'dueDate', 'status'])
+  });
+  try {
+    const result = await callBusiness({ action: 'crmAssist', task, context, agentId: $('crmAgentSelect')?.value || 'data-analyzer' });
+    showCrmNotice(`Automa CRM Copilot · ${modelLabel(result.model)}`, result.reply || 'No insight was returned.');
+  } catch (error) { showCrmNotice('CRM Copilot', error.message || 'The CRM assistant could not complete the request.'); }
+  finally { if (button) button.disabled = false; }
+}
 function wireWorkspace() {
   if (workspaceWired) return; workspaceWired = true;
   const section = id => document.querySelector(`#sec-${id}`);
@@ -248,6 +388,10 @@ function wireWorkspace() {
   const deploy = [...(section('agents')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Deploy New Agent')); deploy?.addEventListener('click', () => openAgentEditor());
   add('automations', 'Create Automation', [{ key: 'name', label: 'Automation name', placeholder: 'Lead follow-up' }, { key: 'trigger', label: 'Trigger', placeholder: 'New lead' }], 'automations');
   document.querySelectorAll('[data-use-blueprint]').forEach(button => button.addEventListener('click', () => window.openAutomationBlueprint(button.dataset.useBlueprint)));
+  document.querySelectorAll('[data-crm-action]').forEach(button => button.addEventListener('click', () => openCrmEditor({ company: 'companies', contact: 'contacts', opportunity: 'opportunities', activity: 'activities' }[button.dataset.crmAction])));
+  document.querySelectorAll('[data-crm-ai]').forEach(button => button.addEventListener('click', () => runCrmAssist(button.dataset.crmAi)));
+  $('crmSearch')?.addEventListener('input', renderCrm);
+  $('crmStageFilter')?.addEventListener('change', renderCrm);
   add('integrations', 'Add Integration', [{ key: 'provider', label: 'Provider', placeholder: 'Slack, Notion, CRM...' }, { key: 'status', label: 'Status', placeholder: 'Connected' }], 'integrations');
   const save = [...(section('settings')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Save Changes')); save?.addEventListener('click', async () => { try { await callBusiness({ action: 'saveProfile', name: $('profileName')?.value.trim() || 'Automa user' }); save.textContent = 'Saved'; setTimeout(() => save.textContent = 'Save Changes', 1500); } catch (e) { alert(e.message); } });
   section('agents')?.querySelectorAll('.agent-card').forEach(card => {
@@ -291,12 +435,13 @@ function subscribe(user) {
   const watch = (name, callback) => { const stop = onSnapshot(query(collection(db, 'users', user.uid, name), orderBy('createdAt', 'desc'), limit(100)), snap => { if (generation !== run) return; const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); updateStats(name, rows); callback(rows); }, error => { if (generation === run) console.warn(`${name} unavailable`, error.code); }); stops.push(stop); };
   watch('leads', rows => renderActivity(rows)); watch('tasks', rows => renderActivity(rows)); watch('runs', rows => renderActivity(rows));
   watch('agents', rows => renderEntities('agents', rows)); watch('automations', rows => renderEntities('automations', rows)); watch('integrations', rows => renderEntities('integrations', rows));
+  watch('companies', rows => { crmState.companies = rows; renderCrm(); }); watch('contacts', rows => { crmState.contacts = rows; renderCrm(); }); watch('opportunities', rows => { crmState.opportunities = rows; renderCrm(); }); watch('activities', rows => { crmState.activities = rows; renderCrm(); });
   wireWorkspace();
 }
 
 if (Object.values(config).every(Boolean)) {
   const app = initializeApp(config); auth = getAuth(app); db = getFirestore(app);
-  onAuthStateChanged(auth, user => { stops.forEach(stop => stop()); stops = []; telegramIntegration = {}; if (user) { window.loginSuccess?.(userShape(user)); subscribe(user); } else { generation++; document.querySelector('#dashboard')?.style.setProperty('display', 'none'); document.querySelector('#landing')?.style.setProperty('display', 'block'); } });
+  onAuthStateChanged(auth, user => { stops.forEach(stop => stop()); stops = []; telegramIntegration = {}; resetCrmState(); if (user) { window.loginSuccess?.(userShape(user)); subscribe(user); } else { generation++; document.querySelector('#dashboard')?.style.setProperty('display', 'none'); document.querySelector('#landing')?.style.setProperty('display', 'block'); } });
   const forgot = document.querySelector('#fLogin a[href="#"]');
   forgot?.addEventListener('click', async event => { event.preventDefault(); const email = $('loginEmail')?.value.trim(); if (!email) return showError('login', 'Enter your email first.'); try { await sendPasswordResetEmail(auth, email); showError('login', 'If that account exists, a reset email has been sent.'); } catch (error) { showError('login', errorMessage(error)); } });
 } else {
