@@ -1,6 +1,14 @@
 import { isAllowedOpenAIModel } from '../shared/models.js';
 
 export class InputError extends Error {}
+export function isAllowedTelegramWebhookUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  try {
+    const url = new URL(value.trim());
+    const hostname = url.hostname.toLowerCase();
+    return url.protocol === 'https:' && url.pathname === '/api/telegram' && !url.search && !url.hash && (hostname === 'automa.wstudio3d.com' || hostname.endsWith('.vercel.app'));
+  } catch { return false; }
+}
 function text(value, label, max) {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max) throw new InputError(`${label}: valor inválido.`);
   return value.trim();
@@ -67,6 +75,7 @@ export function parseCommand(body) {
       if (data.model && !isAllowedOpenAIModel(data.model)) throw new InputError('Modelo OpenAI no permitido.');
       if (data.status && !['enabled', 'paused'].includes(data.status)) throw new InputError('Estado de agente inválido.');
     }
+    if (collection === 'integrations' && data.provider?.toLowerCase() === 'telegram' && data.webhookUrl && !isAllowedTelegramWebhookUrl(data.webhookUrl)) throw new InputError('Webhook URL de Telegram inválida. Usa una URL HTTPS de Automa/Vercel que termine en /api/telegram.');
     return { action: body.action, collection, id, data };
   }
   if (body.action === 'telegramStatus' || body.action === 'telegramRegister') return { action: body.action };

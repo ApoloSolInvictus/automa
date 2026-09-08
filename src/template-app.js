@@ -14,7 +14,7 @@ const config = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
-let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false;
+let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {};
 
 const $ = id => document.getElementById(id);
 function errorMessage(error) {
@@ -107,6 +107,11 @@ function renderActivity(rows) {
 }
 function renderEntities(sectionId, rows) {
   const host = document.querySelector(`#sec-${sectionId}`); if (!host) return;
+  if (sectionId === 'integrations') {
+    telegramIntegration = rows.find(row => row.id === 'telegram' || row.provider?.toLowerCase() === 'telegram') || {};
+    const badge = host.querySelector('[data-telegram-status-label]');
+    if (badge && telegramIntegration.status) badge.textContent = telegramIntegration.status;
+  }
   let list = host.querySelector('.nexus-live-list');
   if (!list) { list = document.createElement('div'); list.className = 'nexus-live-list mb-3'; host.querySelector('.container-fluid, .row')?.prepend(list); }
   list.replaceChildren(...rows.slice(0, 20).map(row => {
@@ -138,7 +143,7 @@ function modal(title, fields, onSave) {
     const label = `<label class="olbl">${escapeHtml(f.label)}</label>`;
     if (f.type === 'select') return `${label}<select class="oinp mb-3" data-field="${escapeHtml(f.key)}">${f.options.map(option => `<option value="${escapeHtml(option.value)}" ${option.value === f.value ? 'selected' : ''}>${escapeHtml(option.label)}${option.description ? ` — ${escapeHtml(option.description)}` : ''}</option>`).join('')}</select>`;
     if (f.type === 'textarea') return `${label}<textarea class="oinp mb-3" data-field="${escapeHtml(f.key)}" rows="${f.rows || 4}" placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(f.value || '')}</textarea>`;
-    return `${label}<input class="oinp mb-3" data-field="${escapeHtml(f.key)}" value="${escapeHtml(f.value || '')}" placeholder="${escapeHtml(f.placeholder || '')}"${f.readonly ? ' readonly' : ''}>`;
+    return `${label}<input type="${f.type === 'url' ? 'url' : 'text'}" class="oinp mb-3" data-field="${escapeHtml(f.key)}" value="${escapeHtml(f.value || '')}" placeholder="${escapeHtml(f.placeholder || '')}"${f.readonly ? ' readonly' : ''}>`;
   }).join('');
   box.innerHTML = `<h4 style="margin-bottom:18px">${escapeHtml(title)}</h4>${controls}<div class="d-flex gap-2 justify-content-end"><button class="boc btn" data-cancel>Cancel</button><button class="bgrd btn" data-save>Save</button></div>`;
   wrap.append(box); document.body.append(wrap); box.querySelector('[data-cancel]').onclick = () => wrap.remove(); box.querySelector('[data-save]').onclick = async () => { const data = {}; box.querySelectorAll('[data-field]').forEach(i => data[i.dataset.field] = i.value.trim()); try { await onSave(data); wrap.remove(); } catch (e) { alert(e.message); } }; return wrap;
@@ -152,7 +157,7 @@ function telegramFields(integration = {}) {
     { key: 'businessProfile', label: 'Telegram Business profile', value: integration.businessProfile || '@wstudiio3d', placeholder: '@wstudiio3d' },
     { key: 'agentId', label: 'Replying agent', type: 'select', value: integration.agentId || 'support-bot-v2-1', options: telegramAgentOptions },
     { key: 'status', label: 'Connection status', type: 'select', value: integration.status || 'Needs setup', options: [{ value: 'Needs setup', label: 'Needs setup' }, { value: 'Connected', label: 'Connected' }, { value: 'Paused', label: 'Paused' }] },
-    { key: 'webhookUrl', label: 'Webhook URL', value: integration.webhookUrl || `${window.location.origin}/api/telegram`, readonly: true }
+    { key: 'webhookUrl', label: 'Webhook URL', type: 'url', value: integration.webhookUrl || `${window.location.origin}/api/telegram`, placeholder: 'https://automa.wstudio3d.com/api/telegram' }
   ];
 }
 function agentFields(agent = {}) {
@@ -193,7 +198,7 @@ function wireWorkspace() {
     if (!btn.textContent.includes('Configure')) return;
     const card = btn.closest('[data-integration-id]');
     if (card?.dataset.integrationId === 'telegram') {
-      btn.addEventListener('click', () => modal('Configure Telegram', telegramFields(), data => callBusiness({ action: 'saveEntity', collection: 'integrations', id: 'telegram', data: { ...data, provider: 'telegram' } })));
+      btn.addEventListener('click', () => modal('Configure Telegram', telegramFields(telegramIntegration), data => callBusiness({ action: 'saveEntity', collection: 'integrations', id: 'telegram', data: { ...data, provider: 'telegram' } })));
       return;
     }
     btn.addEventListener('click', () => modal('Configure Integration', [{ key: 'status', label: 'Status', value: 'Connected' }, { key: 'notes', label: 'Notes' }], data => callBusiness({ action: 'saveEntity', collection: 'integrations', data })));
@@ -231,7 +236,7 @@ function subscribe(user) {
 
 if (Object.values(config).every(Boolean)) {
   const app = initializeApp(config); auth = getAuth(app); db = getFirestore(app);
-  onAuthStateChanged(auth, user => { stops.forEach(stop => stop()); stops = []; if (user) { window.loginSuccess?.(userShape(user)); subscribe(user); } else { generation++; document.querySelector('#dashboard')?.style.setProperty('display', 'none'); document.querySelector('#landing')?.style.setProperty('display', 'block'); } });
+  onAuthStateChanged(auth, user => { stops.forEach(stop => stop()); stops = []; telegramIntegration = {}; if (user) { window.loginSuccess?.(userShape(user)); subscribe(user); } else { generation++; document.querySelector('#dashboard')?.style.setProperty('display', 'none'); document.querySelector('#landing')?.style.setProperty('display', 'block'); } });
   const forgot = document.querySelector('#fLogin a[href="#"]');
   forgot?.addEventListener('click', async event => { event.preventDefault(); const email = $('loginEmail')?.value.trim(); if (!email) return showError('login', 'Enter your email first.'); try { await sendPasswordResetEmail(auth, email); showError('login', 'If that account exists, a reset email has been sent.'); } catch (error) { showError('login', errorMessage(error)); } });
 } else {

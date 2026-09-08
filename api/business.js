@@ -1,4 +1,4 @@
-import { InputError, parseCommand, planFollowUp } from '../server/domain.js';
+import { InputError, isAllowedTelegramWebhookUrl, parseCommand, planFollowUp } from '../server/domain.js';
 import { handleChatCommand, requestOpenAI } from './chat.js';
 import { DEFAULT_OPENAI_MODEL, isAllowedOpenAIModel } from '../shared/models.js';
 import { getDefaultAgent } from '../shared/agents.js';
@@ -10,12 +10,19 @@ function cleanEnv(value) {
   return typeof value === 'string' ? value.trim().replace(/^(["'])(.*)\1$/s, '$2').trim() : '';
 }
 
-async function telegramStatus(userUid) {
+async function telegramConfig(db, userUid) {
+  const saved = await db.collection('users').doc(userUid).collection('integrations').doc('telegram').get();
+  return saved.exists ? saved.data() || {} : {};
+}
+
+async function telegramStatus(db, userUid) {
   const token = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
   const secret = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
   const ownerUid = cleanEnv(process.env.TELEGRAM_OWNER_UID);
   const agentId = cleanEnv(process.env.TELEGRAM_AGENT_ID) || 'support-bot-v2-1';
-  const webhookUrl = cleanEnv(process.env.TELEGRAM_WEBHOOK_URL) || 'https://automa.wstudio3d.com/api/telegram';
+  const configuredUrl = cleanEnv(process.env.TELEGRAM_WEBHOOK_URL) || 'https://automa.wstudio3d.com/api/telegram';
+  const savedConfig = await telegramConfig(db, userUid);
+  const webhookUrl = isAllowedTelegramWebhookUrl(savedConfig.webhookUrl) ? savedConfig.webhookUrl.trim() : configuredUrl;
   const variables = { botToken: Boolean(token), webhookSecret: Boolean(secret), ownerUid: Boolean(ownerUid), agentId: Boolean(agentId), webhookUrl: Boolean(webhookUrl) };
   if (!token) return { ok: false, code: 'telegram_not_configured', error: 'Add TELEGRAM_BOT_TOKEN in Vercel Production.', variables, ownerUidMatches: false };
   try {
@@ -47,13 +54,16 @@ async function telegramStatus(userUid) {
   }
 }
 
-async function registerTelegramWebhook(userUid) {
+async function registerTelegramWebhook(db, userUid) {
   const token = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
   const secret = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
   const ownerUid = cleanEnv(process.env.TELEGRAM_OWNER_UID);
-  const webhookUrl = cleanEnv(process.env.TELEGRAM_WEBHOOK_URL) || 'https://automa.wstudio3d.com/api/telegram';
+  const configuredUrl = cleanEnv(process.env.TELEGRAM_WEBHOOK_URL) || 'https://automa.wstudio3d.com/api/telegram';
+  const savedConfig = await telegramConfig(db, userUid);
+  const webhookUrl = isAllowedTelegramWebhookUrl(savedConfig.webhookUrl) ? savedConfig.webhookUrl.trim() : configuredUrl;
   if (!token || !secret) return { ok: false, code: 'telegram_not_configured', error: 'Add TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET in Vercel Production.' };
   if (!ownerUid || ownerUid !== userUid) return { ok: false, code: 'telegram_owner_mismatch', error: 'TELEGRAM_OWNER_UID must be the Firebase Authentication UID of the signed-in Dashboard user.' };
+  if (!isAllowedTelegramWebhookUrl(webhookUrl)) return { ok: false, code: 'telegram_webhook_url_invalid', error: 'Set TELEGRAM_WEBHOOK_URL or the Dashboard webhook URL to a secure Automa/Vercel /api/telegram URL.' };
   try {
     const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/setWebhook`, {
       method: 'POST',
@@ -117,9 +127,9 @@ export default async function handler(req, res) {
     let user;
     try { user = await auth.verifyIdToken(token, true); }
     catch { return res.status(401).json({ error: 'Sesión inválida. Vuelve a iniciar sesión.' }); }
-    if (cmd.action === 'telegramStatus') return res.status(200).json(await telegramStatus(user.uid));
+    if (cmd.action === 'telegramStatus') return res.status(200).json(await telegramStatus(db, user.uid));
     if (cmd.action === 'telegramRegister') {
-      const result = await registerTelegramWebhook(user.uid);
+      const result = await registerTelegramWebhook(db, user.uid);
       return res.status(result.ok ? 200 : result.code === 'telegram_owner_mismatch' ? 409 : 503).json(result);
     }
     const root = db.collection('users').doc(user.uid);
