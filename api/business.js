@@ -42,10 +42,12 @@ async function telegramStatus(db, userUid) {
       ownerUidMatches: Boolean(ownerUid && ownerUid === userUid),
       bot: { username: me.result?.username || null, name: me.result?.first_name || null },
       webhook: {
+        expectedUrl: webhookUrl,
         urlConfigured: Boolean(configuredUrl),
         urlMatches: configuredUrl === webhookUrl,
         pendingUpdates: Number.isInteger(info.pending_update_count) ? info.pending_update_count : 0,
-        hasLastError: Boolean(info.last_error_message)
+        hasLastError: Boolean(info.last_error_message),
+        lastError: typeof info.last_error_message === 'string' ? info.last_error_message.slice(0, 240) : null
       },
       agentId
     };
@@ -72,7 +74,10 @@ async function registerTelegramWebhook(db, userUid) {
       signal: AbortSignal.timeout(8000)
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload.ok !== true) return { ok: false, code: 'telegram_webhook_register_failed', error: 'Telegram rejected the webhook URL or token.' };
+    if (!response.ok || payload.ok !== true) {
+      const reason = typeof payload.description === 'string' ? ` ${payload.description.slice(0, 240)}` : '';
+      return { ok: false, code: 'telegram_webhook_register_failed', error: `Telegram rejected the webhook URL or token.${reason}` };
+    }
     return { ok: true, code: 'telegram_webhook_registered', webhookUrl };
   } catch {
     return { ok: false, code: 'telegram_unreachable', error: 'Telegram could not be reached from the Vercel function.' };

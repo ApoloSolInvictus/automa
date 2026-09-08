@@ -209,7 +209,7 @@ function wireWorkspace() {
     try {
       const result = await callBusiness({ action: 'telegramStatus' });
       const variableState = Object.entries(result.variables || {}).map(([name, present]) => `${name}: ${present ? 'set' : 'missing'}`).join('\n');
-      const webhookState = result.webhook ? `\nWebhook URL: ${result.webhook.urlConfigured ? (result.webhook.urlMatches ? 'correct' : 'different URL') : 'not registered'}\nPending updates: ${result.webhook.pendingUpdates}` : '';
+      const webhookState = result.webhook ? `\nWebhook URL: ${result.webhook.urlConfigured ? (result.webhook.urlMatches ? 'correct' : 'different URL') : 'not registered'}\nTarget URL: ${result.webhook.expectedUrl || 'not configured'}\nPending updates: ${result.webhook.pendingUpdates}${result.webhook.lastError ? `\nTelegram last error: ${result.webhook.lastError}` : ''}` : '';
       alert(`${result.bot?.name || 'Telegram'}${result.bot?.username ? ` (@${result.bot.username})` : ''}\n\n${result.error || result.code}${result.ownerUidMatches === false ? '\nTELEGRAM_OWNER_UID does not match the signed-in user.' : ''}${webhookState}\n\n${variableState}`);
     } catch (error) { alert(error.message); }
     finally { telegramStatusButton.disabled = false; }
