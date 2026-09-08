@@ -30,6 +30,31 @@ async function services() {
   catch (error) { throw Object.assign(new Error('FIREBASE_ADMIN_CREDENTIALS'), { code: 'firebase_admin_credentials', cause: error }); }
   return { auth: adminGetAuth(adminApp), db: adminGetFirestore(adminApp), FieldValue: adminFieldValue };
 }
+async function verifyFirebaseToken(token) {
+  const apiKey = process.env.FIREBASE_WEB_API_KEY || process.env.VITE_FIREBASE_API_KEY;
+  if (!apiKey) return null;
+  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: token }) });
+  if (!response.ok) return null;
+  const data = await response.json();
+  return data.users?.[0] || null;
+}
+async function answerWithOpenAI(cmd) {
+  if (!process.env.OPENAI_API_KEY) return { status: 503, body: { error: 'OpenAI no está configurado en Vercel.' } };
+  const { default: OpenAI } = await import('openai');
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  try {
+    const response = await client.responses.create({ model: process.env.OPENAI_MODEL || 'gpt-5-mini', store: false, instructions: 'You are NexusAI, a concise business automation assistant. Answer in English. Discuss only support analytics, AI agents, workflow automation, and business metrics. Never claim to have executed an action. If asked to change data, explain that the user must use the dashboard action.', input: [...cmd.history, { role: 'user', content: cmd.message }] });
+    return { status: 200, body: { ok: true, reply: response.output_text || 'I could not generate a response.' } };
+  } catch (error) {
+    const code = error?.code || error?.error?.code, status = error?.status || error?.statusCode;
+    if (status === 401 || code === 'invalid_api_key') return { status: 502, body: { error: 'OpenAI rejected the API key configured in Vercel.', code: 'invalid_api_key' } };
+    if (code === 'insufficient_quota') return { status: 502, body: { error: 'The OpenAI API project has no available quota or credits.', code } };
+    if (status === 429 || code === 'rate_limit_exceeded') return { status: 502, body: { error: 'OpenAI rate limit reached. Please retry shortly.', code: 'rate_limit_exceeded' } };
+    if (status === 403 || code === 'model_not_found') return { status: 502, body: { error: 'The selected OpenAI model is not available to this project.', code: code || 'model_access' } };
+    console.error('OpenAI request failed', { code: code || 'upstream_error', status: status || 0 });
+    return { status: 502, body: { error: 'OpenAI could not complete the request. Check OPENAI_MODEL and the project access in Vercel.', code: 'upstream_error' } };
+  }
+}
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return res.status(405).json({ error: 'Usa POST.' }); }
@@ -38,6 +63,11 @@ export default async function handler(req, res) {
   try {
     if (JSON.stringify(req.body ?? '').length > 12000) return res.status(413).json({ error: 'Solicitud demasiado grande.' });
     const cmd = parseCommand(req.body);
+    if (cmd.action === 'chat') {
+      if (!(await verifyFirebaseToken(token))) return res.status(401).json({ error: 'Sesión inválida. Vuelve a iniciar sesión.' });
+      const result = await answerWithOpenAI(cmd);
+      return res.status(result.status).json(result.body);
+    }
     let auth, db, FieldValue;
     try { ({ auth, db, FieldValue } = await services()); }
     catch (error) {
@@ -67,29 +97,6 @@ export default async function handler(req, res) {
         tx.update(ref, { status: cmd.status, updatedAt: stamp });
       });
       return res.status(200).json({ ok: true });
-    }
-    if (cmd.action === 'chat') {
-      if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'OpenAI no está configurado en Vercel.' });
-      const { default: OpenAI } = await import('openai');
-      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      try {
-        const response = await client.responses.create({
-          model: process.env.OPENAI_MODEL || 'gpt-5-mini',
-          store: false,
-          instructions: 'You are NexusAI, a concise business automation assistant. Answer in English. Discuss only support analytics, AI agents, workflow automation, and business metrics. Never claim to have executed an action. If asked to change data, explain that the user must use the dashboard action.',
-          input: [...cmd.history, { role: 'user', content: cmd.message }]
-        });
-        return res.status(200).json({ ok: true, reply: response.output_text || 'I could not generate a response.' });
-      } catch (error) {
-        const code = error?.code || error?.error?.code;
-        const status = error?.status || error?.statusCode;
-        if (status === 401 || code === 'invalid_api_key') return res.status(502).json({ error: 'OpenAI rejected the API key configured in Vercel.', code: 'invalid_api_key' });
-        if (code === 'insufficient_quota') return res.status(502).json({ error: 'The OpenAI API project has no available quota or credits.', code });
-        if (status === 429 || code === 'rate_limit_exceeded') return res.status(502).json({ error: 'OpenAI rate limit reached. Please retry shortly.', code: 'rate_limit_exceeded' });
-        if (status === 403 || code === 'model_not_found') return res.status(502).json({ error: 'The selected OpenAI model is not available to this project.', code: code || 'model_access' });
-        console.error('OpenAI request failed', { code: code || 'upstream_error', status: status || 0 });
-        return res.status(502).json({ error: 'OpenAI could not complete the request. Check OPENAI_MODEL and the project access in Vercel.', code: 'upstream_error' });
-      }
     }
     if (cmd.action === 'saveEntity') {
       const ref = cmd.id ? root.collection(cmd.collection).doc(cmd.id) : root.collection(cmd.collection).doc();
