@@ -2,6 +2,9 @@ import { InputError, parseCommand, planFollowUp } from '../server/domain.js';
 import { handleChatCommand, requestOpenAI } from './chat.js';
 import { DEFAULT_OPENAI_MODEL, isAllowedOpenAIModel } from '../shared/models.js';
 import { getDefaultAgent } from '../shared/agents.js';
+import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 
 async function services() {
   let { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
@@ -19,20 +22,10 @@ async function services() {
   const normalizedProjectId = clean(projectId);
   const normalizedClientEmail = clean(clientEmail);
   const normalizedPrivateKey = clean(privateKey).replace(/\r/g, '');
-  let adminApp, adminCert, adminGetApps, adminInitializeApp, adminGetAuth, adminGetFirestore, adminFieldValue;
-  try {
-    // firebase-admin v14 is ESM. Dynamic imports keep the Admin SDK out of
-    // the isolated chat function while loading the correct module format in
-    // Vercel's Node runtime.
-    ({ cert: adminCert, getApps: adminGetApps, initializeApp: adminInitializeApp } = await import('firebase-admin/app'));
-    ({ getAuth: adminGetAuth } = await import('firebase-admin/auth'));
-    ({ getFirestore: adminGetFirestore, FieldValue: adminFieldValue } = await import('firebase-admin/firestore'));
-  } catch (error) {
-    throw Object.assign(new Error('FIREBASE_ADMIN_SDK_LOAD'), { code: 'firebase_admin_sdk_load', cause: error });
-  }
-  try { adminApp = adminGetApps()[0] || adminInitializeApp({ credential: adminCert({ projectId: normalizedProjectId, clientEmail: normalizedClientEmail, privateKey: normalizedPrivateKey }) }); }
+  let adminApp;
+  try { adminApp = getApps()[0] || initializeApp({ credential: cert({ projectId: normalizedProjectId, clientEmail: normalizedClientEmail, privateKey: normalizedPrivateKey }) }); }
   catch (error) { throw Object.assign(new Error('FIREBASE_ADMIN_CREDENTIALS'), { code: 'firebase_admin_credentials', cause: error }); }
-  return { auth: adminGetAuth(adminApp), db: adminGetFirestore(adminApp), FieldValue: adminFieldValue };
+  return { auth: getAuth(adminApp), db: getFirestore(adminApp), FieldValue };
 }
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
