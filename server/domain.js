@@ -1,3 +1,5 @@
+import { isAllowedOpenAIModel } from '../shared/models.js';
+
 export class InputError extends Error {}
 function text(value, label, max) {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max) throw new InputError(`${label}: valor inválido.`);
@@ -30,17 +32,41 @@ export function parseCommand(body) {
     });
     return { action: body.action, message, history };
   }
+  if (body.action === 'runAgent') {
+    const agentId = text(body.agentId, 'Agente', 80);
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(agentId)) throw new InputError('Agente inválido.');
+    const message = text(body.message, 'Mensaje', 4000);
+    const rawHistory = body.history == null ? [] : body.history;
+    if (!Array.isArray(rawHistory) || rawHistory.length > 20) throw new InputError('Historial inválido.');
+    const history = rawHistory.map(item => {
+      if (!item || !['user', 'assistant'].includes(item.role)) throw new InputError('Historial inválido.');
+      return { role: item.role, content: text(item.content, 'Mensaje', 4000) };
+    });
+    return { action: body.action, agentId, message, history };
+  }
   if (body.action === 'saveEntity') {
     const collection = text(body.collection, 'Colección', 40);
     if (!['agents', 'automations', 'integrations'].includes(collection)) throw new InputError('Colección inválida.');
     const id = body.id == null ? null : text(body.id, 'Identificador', 80);
+    if (id && !/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw new InputError('Identificador inválido.');
     if (!body.data || typeof body.data !== 'object' || Array.isArray(body.data)) throw new InputError('Datos inválidos.');
     const data = {};
     for (const [key, value] of Object.entries(body.data)) {
-      if (!/^[a-zA-Z][a-zA-Z0-9_]{0,30}$/.test(key) || typeof value !== 'string' || value.length > 500) throw new InputError('Datos inválidos.');
+      const maxValueLength = collection === 'agents' && key === 'instructions' ? 6000 : 500;
+      if (!/^[a-zA-Z][a-zA-Z0-9_]{0,30}$/.test(key) || typeof value !== 'string' || value.length > maxValueLength) throw new InputError('Datos inválidos.');
       data[key] = value.trim();
     }
     if (!Object.keys(data).length) throw new InputError('Datos inválidos.');
+    if (collection === 'agents') {
+      const allowedKeys = ['name', 'description', 'model', 'instructions', 'status'];
+      if (Object.keys(data).some(key => !allowedKeys.includes(key))) throw new InputError('Configuración de agente inválida.');
+      if (!data.name) throw new InputError('Nombre de agente inválido.');
+      if (data.name && data.name.length > 120) throw new InputError('Nombre de agente inválido.');
+      if (data.description && data.description.length > 300) throw new InputError('Descripción de agente inválida.');
+      if (data.instructions && data.instructions.length > 6000) throw new InputError('Instrucciones de agente inválidas.');
+      if (data.model && !isAllowedOpenAIModel(data.model)) throw new InputError('Modelo OpenAI no permitido.');
+      if (data.status && !['enabled', 'paused'].includes(data.status)) throw new InputError('Estado de agente inválido.');
+    }
     return { action: body.action, collection, id, data };
   }
   if (body.action === 'saveProfile') {

@@ -42,7 +42,7 @@ test('chat endpoint validates Firebase by REST and returns an OpenAI reply', asy
   const calls = [];
   process.env.FIREBASE_WEB_API_KEY = 'firebase-test-key';
   process.env.OPENAI_API_KEY = 'openai-test-key';
-  process.env.OPENAI_MODEL = 'test-model';
+  process.env.OPENAI_MODEL = 'gpt-5.6-terra';
   globalThis.fetch = async (url, options) => {
     calls.push({ url: String(url), options });
     if (String(url).includes('identitytoolkit.googleapis.com')) {
@@ -56,7 +56,7 @@ test('chat endpoint validates Firebase by REST and returns an OpenAI reply', asy
     await chatHandler({ method: 'POST', headers: { authorization: 'Bearer firebase-id-token' }, body: { action: 'chat', message: 'Help me automate leads', history: [] } }, res);
     assert.equal(res.code, 200);
     assert.equal(res.body.reply, 'Automation ready.');
-    assert.equal(res.body.model, 'test-model');
+    assert.equal(res.body.model, 'gpt-5.6-terra');
     assert.equal(calls.length, 2);
     assert.match(calls[0].url, /identitytoolkit\.googleapis\.com/);
     assert.equal(calls[1].url, 'https://api.openai.com/v1/responses');

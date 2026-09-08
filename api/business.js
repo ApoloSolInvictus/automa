@@ -1,6 +1,8 @@
 import { InputError, parseCommand, planFollowUp } from '../server/domain.js';
 import { createRequire } from 'node:module';
-import { handleChatCommand } from './chat.js';
+import { handleChatCommand, requestOpenAI } from './chat.js';
+import { DEFAULT_OPENAI_MODEL, isAllowedOpenAIModel } from '../shared/models.js';
+import { getDefaultAgent } from '../shared/agents.js';
 
 async function services() {
   let { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
@@ -77,6 +79,24 @@ export default async function handler(req, res) {
       const ref = cmd.id ? root.collection(cmd.collection).doc(cmd.id) : root.collection(cmd.collection).doc();
       await ref.set({ ...cmd.data, updatedAt: stamp, ...(cmd.id ? {} : { createdAt: stamp }) }, { merge: true });
       return res.status(200).json({ ok: true, id: ref.id });
+    }
+    if (cmd.action === 'runAgent') {
+      const ref = root.collection('agents').doc(cmd.agentId);
+      const snapshot = await ref.get();
+      const saved = snapshot.exists ? snapshot.data() : null;
+      const agent = { ...(getDefaultAgent(cmd.agentId) || {}), ...(saved || {}) };
+      if (!agent.name) return res.status(404).json({ error: 'Agent not found.', code: 'agent_not_found' });
+      if (agent.status === 'paused') return res.status(409).json({ error: 'This agent is paused. Enable it before running a test.', code: 'agent_paused' });
+      const model = agent.model || DEFAULT_OPENAI_MODEL;
+      if (!isAllowedOpenAIModel(model)) return res.status(400).json({ error: 'This agent has an unsupported OpenAI model. Reconfigure it first.', code: 'agent_model_invalid' });
+      const instructions = [
+        `You are the ${agent.name} agent.`,
+        agent.description ? `Business area: ${agent.description}.` : '',
+        agent.instructions || '',
+        'Only answer with information grounded in the user message and conversation. Do not claim to have run an automation or changed external data.'
+      ].filter(Boolean).join(' ');
+      const result = await requestOpenAI(cmd, { model, instructions });
+      return res.status(result.status).json({ ...result.body, agentId: cmd.agentId, agent: agent.name });
     }
     if (cmd.action === 'saveProfile') {
       await root.collection('settings').doc('profile').set({ name: cmd.name, email: user.email || '', updatedAt: stamp }, { merge: true });

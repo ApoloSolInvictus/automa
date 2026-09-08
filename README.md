@@ -18,7 +18,7 @@ La plantilla visual original de NexusAI se conserva en [`demo.html`](demo.html),
 | Automatización | Listo | Crea una tarea de seguimiento con vencimiento configurable |
 | Historial | Listo | Registra si la tarea fue creada u omitida |
 | Completar tareas | Listo | Completar y reabrir desde el dashboard |
-| IA | Disponible opcionalmente | El chat del dashboard usa `/api/chat` y OpenAI cuando Vercel tiene `OPENAI_API_KEY` |
+| IA y agentes | Listo | El chat y las pruebas de agentes usan OpenAI desde funciones de Vercel; cada agente puede elegir un modelo |
 | WhatsApp, email, Slack, CRM y pagos | Pendiente | Requieren integraciones y credenciales adicionales |
 | Ejecución al vencer una tarea | Pendiente | La fecha se guarda; todavía no existe un cron que envíe mensajes |
 | Equipos y organizaciones | Pendiente | Esta versión tiene un espacio individual por usuario |
@@ -125,6 +125,7 @@ users/{uid}/tasks/{requestId}
 users/{uid}/runs/{requestId}
 users/{uid}/settings/followUp
 users/{uid}/internal/{YYYY-MM-DD}
+users/{uid}/agents/{agentId}
 ```
 
 El servidor crea prospecto, tarea, historial y contador diario en una transacción. El mismo `requestId` evita duplicar un prospecto si el navegador reintenta. El límite actual es de 200 prospectos por cuenta y día UTC. El dashboard muestra como máximo los últimos 100 documentos por colección.
@@ -213,7 +214,7 @@ Casos apropiados: clasificar prospectos, extraer campos, resumir conversaciones 
 
 ```env
 OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-5-mini
+OPENAI_MODEL=gpt-5.6-terra
 ```
 
 En el repositorio solo deben quedar los nombres vacíos de [`.env.example`](.env.example). En Vercel crea `OPENAI_API_KEY` como **Sensitive**, selecciona Production y Preview según corresponda, y crea `OPENAI_MODEL` como variable normal. Si usas la CLI, los comandos solicitan el valor de forma interactiva:
@@ -239,7 +240,7 @@ El endpoint dedicado `/api/chat` llama a OpenAI desde el servidor y no depende d
 # Server only; configúralo en Vercel; lo usa el chat del dashboard
 FIREBASE_WEB_API_KEY=
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5-mini
+OPENAI_MODEL=gpt-5.6-terra
 ```
 
 ### 5.4 Patrón de función de servidor
@@ -258,7 +259,7 @@ export default async function handler(req, res) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || 'gpt-5-mini',
+      model: process.env.OPENAI_MODEL || 'gpt-5.6-terra',
       store: false,
       input: 'Summarize this business conversation: ...'
     })
@@ -271,7 +272,35 @@ export default async function handler(req, res) {
 
 Para producción, añade límites de longitud, timeout, control de reintentos, registro sin datos sensibles, validación estructurada y una política para errores del proveedor. La clave se lee del entorno del servidor; nunca se acepta desde el body.
 
-### 5.5 Costos y privacidad
+### 5.5 Conectar y probar los agentes
+
+La sección **AI Agents** mantiene el diseño del template y ahora funciona con un solo proveedor: OpenAI. **Deploy New Agent** guarda en `users/{uid}/agents` el nombre, área de negocio, instrucciones, estado y modelo. **Configure** actualiza ese documento. **View** abre una prueba: el mensaje viaja autenticado a `/api/business`, el servidor carga la configuración del agente y llama a OpenAI; la clave nunca llega al navegador.
+
+Los cuatro agentes de ejemplo usan estos IDs estables y se pueden probar desde el primer login:
+
+| Agente | Modelo inicial | Uso recomendado |
+| --- | --- | --- |
+| Support Bot v2.1 | `gpt-5.6-terra` | Soporte y respuestas equilibradas |
+| Sales Qualifier | `gpt-5.6-sol` | Calificación comercial de alta calidad |
+| Data Analyzer | `gpt-5.6-luna` | Análisis rápido y de alto volumen |
+| Email Automator | `gpt-5.6-terra` | Borradores de correo con revisión humana |
+
+El catálogo permite `gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.6-terra` y `gpt-5.6-luna`. `OPENAI_MODEL` es el fallback del chat y de agentes que no tengan modelo guardado; también se aceptan los IDs OpenAI que ya usaba el despliegue (`gpt-5-mini`, `gpt-4o`, `gpt-4o-mini`). Un agente en estado **Paused** no puede ejecutarse. Las instrucciones están limitadas a 6000 caracteres y los mensajes a 4000.
+
+La ejecución actual es deliberadamente de texto: el agente analiza el mensaje y devuelve una respuesta, pero no afirma haber enviado correos, cambiado Firestore o ejecutado acciones externas. Para automatizar una acción real hay que añadir una herramienta server-side con parámetros validados, permisos y auditoría.
+
+### 5.6 Modelos OpenAI disponibles
+
+Los nombres del selector corresponden a modelos de la API de OpenAI, no a Claude ni Gemini:
+
+- `gpt-6-astra`: elige esta opción para razonamiento y tareas complejas.
+- `gpt-5.6-sol`: opción general de alta calidad para procesos comerciales.
+- `gpt-5.6-terra`: equilibrio recomendado entre capacidad, rapidez y costo.
+- `gpt-5.6-luna`: trabajos repetitivos, rápidos y de mayor volumen.
+
+La API valida la lista antes de guardar o ejecutar un agente. Si un proyecto OpenAI no tiene acceso a un modelo, la respuesta lo informa como `model_access` y debes seleccionar otro modelo habilitado en ese proyecto.
+
+### 5.7 Costos y privacidad
 
 El uso de OpenAI se factura por el consumo del modelo y puede tener límites de tasa. Empieza con entradas cortas, guarda solo el resultado necesario y define un presupuesto. No envíes contraseñas, tokens, claves, tarjetas ni información personal que no sea necesaria. Decide cuánto tiempo conservarás prompts y respuestas antes de activar el flujo con clientes reales.
 
@@ -326,7 +355,7 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 
 ## 9. Próximos pasos
 
-1. Conectar OpenAI desde una función server-side para clasificación o extracción.
+1. Añadir herramientas server-side con permisos para que un agente ejecute acciones reales de negocio.
 2. Añadir un cron que busque tareas vencidas y cree ejecuciones idempotentes.
 3. Integrar email o WhatsApp con consentimiento, plantillas y reintentos.
 4. Añadir roles y organizaciones si habrá equipos.

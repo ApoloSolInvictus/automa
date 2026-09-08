@@ -5,6 +5,8 @@ import {
   GithubAuthProvider, sendPasswordResetEmail, signOut
 } from 'firebase/auth';
 import { getFirestore, collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { OPENAI_MODELS, DEFAULT_OPENAI_MODEL, modelLabel } from '../shared/models.js';
+import { getDefaultAgent } from '../shared/agents.js';
 
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,7 +14,7 @@ const config = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
-let auth, db, stops = [], chat = [], generation = 0, chatPending = false;
+let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false;
 
 const $ = id => document.getElementById(id);
 function errorMessage(error) {
@@ -107,27 +109,74 @@ function renderEntities(sectionId, rows) {
   const host = document.querySelector(`#sec-${sectionId}`); if (!host) return;
   let list = host.querySelector('.nexus-live-list');
   if (!list) { list = document.createElement('div'); list.className = 'nexus-live-list mb-3'; host.querySelector('.container-fluid, .row')?.prepend(list); }
-  list.replaceChildren(...rows.slice(0, 20).map(row => { const item = document.createElement('div'); item.className = 'd-flex justify-content-between align-items-center p-3 mb-2'; item.style.cssText = 'background:var(--bg3);border:1px solid var(--bd);border-radius:10px'; const name = document.createElement('span'); name.textContent = row.name || row.provider || row.title || 'Untitled'; const meta = document.createElement('small'); meta.style.color = 'var(--tx3)'; meta.textContent = row.status || row.trigger || 'Active'; item.append(name, meta); return item; }));
+  list.replaceChildren(...rows.slice(0, 20).map(row => {
+    const item = document.createElement('div'); item.className = 'd-flex justify-content-between align-items-center gap-3 p-3 mb-2'; item.style.cssText = 'background:var(--bg3);border:1px solid var(--bd);border-radius:10px';
+    const info = document.createElement('div'); info.style.minWidth = '0';
+    const name = document.createElement('strong'); name.textContent = row.name || row.provider || row.title || 'Untitled';
+    const meta = document.createElement('small'); meta.style.color = 'var(--tx3)'; meta.textContent = sectionId === 'agents' ? `${modelLabel(row.model)} · ${row.status || 'enabled'}` : (row.status || row.trigger || 'Active');
+    info.append(name, document.createElement('br'), meta); item.append(info);
+    if (sectionId === 'agents') {
+      const actions = document.createElement('div'); actions.className = 'd-flex gap-2 flex-shrink-0';
+      const view = document.createElement('button'); view.className = 'boc btn py-2'; view.innerHTML = '<i class="fa-solid fa-play me-1"></i>Test'; view.onclick = () => openAgentTest(row, row.id);
+      const configure = document.createElement('button'); configure.className = 'bgrd btn py-2'; configure.innerHTML = '<i class="fa-solid fa-sliders me-1"></i>Configure'; configure.onclick = () => openAgentEditor(row, row.id);
+      actions.append(view, configure); item.append(actions);
+    }
+    return item;
+  }));
 }
 async function callBusiness(body) {
   const token = await auth.currentUser?.getIdToken(); if (!token) throw new Error('AUTH');
   const response = await fetch('/api/business', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
   const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Request failed.'); return data;
 }
+function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character])); }
 function modal(title, fields, onSave) {
   const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#0009;z-index:3000;display:grid;place-items:center;padding:20px';
   const box = document.createElement('div'); box.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:24px;width:min(520px,100%)';
-  box.innerHTML = `<h4 style="margin-bottom:18px">${title}</h4>` + fields.map(f => `<label class="olbl">${f.label}</label><input class="oinp mb-3" data-field="${f.key}" value="${(f.value || '').replace(/"/g,'&quot;')}" placeholder="${f.placeholder || ''}">`).join('') + '<div class="d-flex gap-2 justify-content-end"><button class="boc btn" data-cancel>Cancel</button><button class="bgrd btn" data-save>Save</button></div>';
+  const controls = fields.map(f => {
+    const label = `<label class="olbl">${escapeHtml(f.label)}</label>`;
+    if (f.type === 'select') return `${label}<select class="oinp mb-3" data-field="${escapeHtml(f.key)}">${f.options.map(option => `<option value="${escapeHtml(option.value)}" ${option.value === f.value ? 'selected' : ''}>${escapeHtml(option.label)}${option.description ? ` — ${escapeHtml(option.description)}` : ''}</option>`).join('')}</select>`;
+    if (f.type === 'textarea') return `${label}<textarea class="oinp mb-3" data-field="${escapeHtml(f.key)}" rows="${f.rows || 4}" placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(f.value || '')}</textarea>`;
+    return `${label}<input class="oinp mb-3" data-field="${escapeHtml(f.key)}" value="${escapeHtml(f.value || '')}" placeholder="${escapeHtml(f.placeholder || '')}">`;
+  }).join('');
+  box.innerHTML = `<h4 style="margin-bottom:18px">${escapeHtml(title)}</h4>${controls}<div class="d-flex gap-2 justify-content-end"><button class="boc btn" data-cancel>Cancel</button><button class="bgrd btn" data-save>Save</button></div>`;
   wrap.append(box); document.body.append(wrap); box.querySelector('[data-cancel]').onclick = () => wrap.remove(); box.querySelector('[data-save]').onclick = async () => { const data = {}; box.querySelectorAll('[data-field]').forEach(i => data[i.dataset.field] = i.value.trim()); try { await onSave(data); wrap.remove(); } catch (e) { alert(e.message); } }; return wrap;
 }
+const modelFields = (value = DEFAULT_OPENAI_MODEL) => [{ key: 'model', label: 'OpenAI model', type: 'select', value, options: OPENAI_MODELS }];
+function agentFields(agent = {}) {
+  return [
+    { key: 'name', label: 'Agent name', value: agent.name || '', placeholder: 'Support Agent' },
+    { key: 'description', label: 'Business area', value: agent.description || '', placeholder: 'What this agent handles' },
+    ...modelFields(agent.model || DEFAULT_OPENAI_MODEL),
+    { key: 'instructions', label: 'Instructions', type: 'textarea', rows: 5, value: agent.instructions || '', placeholder: 'Describe the agent behavior and boundaries' },
+    { key: 'status', label: 'Status', type: 'select', value: agent.status === 'paused' ? 'paused' : 'enabled', options: [{ value: 'enabled', label: 'Enabled' }, { value: 'paused', label: 'Paused' }] }
+  ];
+}
+function openAgentEditor(agent = {}, id = null) {
+  const seed = { ...(id ? getDefaultAgent(id) || {} : {}), ...agent };
+  return modal(id ? 'Configure Agent' : 'Deploy New Agent', agentFields(seed), data => callBusiness({ action: 'saveEntity', collection: 'agents', ...(id ? { id } : {}), data }));
+}
+function openAgentTest(agent = {}, id) {
+  const seed = { ...(id ? getDefaultAgent(id) || {} : {}), ...agent };
+  if (!id) return alert('Save this agent before running a test.');
+  return modal(`Test ${seed.name || 'Agent'}`, [{ key: 'message', label: 'Test message', type: 'textarea', rows: 4, placeholder: 'Ask this agent to help with a business task.' }], async data => {
+    if (!auth.currentUser) throw new Error('Your session expired. Please sign in again.');
+    const result = await callBusiness({ action: 'runAgent', agentId: id, message: data.message, history: [] });
+    alert(`${result.agent || seed.name} · ${modelLabel(result.model || seed.model)}\n\n${result.reply || 'No response.'}`);
+  });
+}
 function wireWorkspace() {
+  if (workspaceWired) return; workspaceWired = true;
   const section = id => document.querySelector(`#sec-${id}`);
   const add = (id, label, fields, collection) => { const btn = [...(section(id)?.querySelectorAll('button') || [])].find(b => b.textContent.includes(label)); btn?.addEventListener('click', () => modal(label, fields, data => callBusiness({ action: 'saveEntity', collection, data }))); };
-  add('agents', 'Deploy New Agent', [{ key: 'name', label: 'Agent name', placeholder: 'Support Agent' }, { key: 'description', label: 'Description', placeholder: 'What this agent handles' }], 'agents');
+  const deploy = [...(section('agents')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Deploy New Agent')); deploy?.addEventListener('click', () => openAgentEditor());
   add('automations', 'Create Automation', [{ key: 'name', label: 'Automation name', placeholder: 'Lead follow-up' }, { key: 'trigger', label: 'Trigger', placeholder: 'New lead' }], 'automations');
   add('integrations', 'Add Integration', [{ key: 'provider', label: 'Provider', placeholder: 'Slack, Notion, CRM...' }, { key: 'status', label: 'Status', placeholder: 'Connected' }], 'integrations');
   const save = [...(section('settings')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Save Changes')); save?.addEventListener('click', async () => { try { await callBusiness({ action: 'saveProfile', name: $('profileName')?.value.trim() || 'NexusAI user' }); save.textContent = 'Saved'; setTimeout(() => save.textContent = 'Save Changes', 1500); } catch (e) { alert(e.message); } });
-  section('agents')?.querySelectorAll('button').forEach(btn => { if (btn.textContent.includes('Configure')) btn.addEventListener('click', () => modal('Configure Agent', [{ key: 'status', label: 'Status', value: 'Active' }, { key: 'instructions', label: 'Instructions', placeholder: 'Describe the agent behavior' }], data => callBusiness({ action: 'saveEntity', collection: 'agents', data }))); if (btn.textContent.includes('View')) btn.addEventListener('click', () => alert('Agent details are available after deployment.')); });
+  section('agents')?.querySelectorAll('.agent-card').forEach(card => {
+    const id = card.dataset.agentId; const seed = getDefaultAgent(id) || {};
+    card.querySelectorAll('button').forEach(btn => { if (btn.textContent.includes('Configure')) btn.addEventListener('click', () => openAgentEditor(seed, id)); if (btn.textContent.includes('View')) btn.addEventListener('click', () => openAgentTest(seed, id)); });
+  });
   document.querySelectorAll('#sec-integrations button').forEach(btn => { if (btn.textContent.includes('Configure')) btn.addEventListener('click', () => modal('Configure Integration', [{ key: 'status', label: 'Status', value: 'Connected' }, { key: 'notes', label: 'Notes' }], data => callBusiness({ action: 'saveEntity', collection: 'integrations', data }))); });
 }
 function subscribe(user) {

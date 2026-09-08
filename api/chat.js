@@ -1,4 +1,5 @@
 import { InputError, parseCommand } from '../server/domain.js';
+import { DEFAULT_OPENAI_MODEL, isAllowedOpenAIModel } from '../shared/models.js';
 
 const systemInstructions = [
   'You are NexusAI, a concise business automation assistant.',
@@ -67,10 +68,12 @@ async function verifyFirebaseSession(token) {
   return { status: 200, user: payload.users[0] };
 }
 
-async function requestOpenAI(command) {
+export async function requestOpenAI(command, options = {}) {
   const apiKey = cleanEnv(process.env.OPENAI_API_KEY);
-  const model = cleanEnv(process.env.OPENAI_MODEL) || 'gpt-5-mini';
+  const model = cleanEnv(options.model) || cleanEnv(process.env.OPENAI_MODEL) || DEFAULT_OPENAI_MODEL;
   if (!apiKey) return { status: 503, body: { error: 'OpenAI is not configured in Vercel.', code: 'openai_key_missing' } };
+  if (!isAllowedOpenAIModel(model)) return { status: 503, body: { error: 'The configured OpenAI model is not in the supported agent catalog.', code: 'openai_model_invalid' } };
+  const instructions = cleanEnv(options.instructions) || systemInstructions;
 
   let response;
   try {
@@ -84,7 +87,7 @@ async function requestOpenAI(command) {
         model,
         store: false,
         max_output_tokens: 800,
-        instructions: systemInstructions,
+        instructions,
         input: [...command.history, { role: 'user', content: command.message }]
       }),
       signal: AbortSignal.timeout(22000)
