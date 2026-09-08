@@ -330,6 +330,8 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 
 **La API devuelve 503.** Si aparece `firebase_server_not_configured`, falta una variable privada. Si aparece `firebase_admin_credentials`, vuelve a generar la clave de cuenta de servicio y copia exactamente `project_id`, `client_email` y `private_key` del mismo proyecto de Firebase. Las reglas de Firestore no corrigen un fallo de inicialización de Firebase Admin.
 
+**La función muestra `ERR_REQUIRE_ESM` al cargar Firebase Admin.** Usa el `package-lock.json` del repositorio (`npm ci`) y vuelve a desplegar. El proyecto fija `firebase-admin@13.5.0`, una versión compatible con el runtime de Vercel usado por esta aplicación; no actualices sólo ese paquete sin probar el despliegue de las funciones.
+
 **El chat muestra `firebase_admin_sdk_load`.** El navegador está usando una versión anterior que todavía enviaba el chat a `/api/business`. Despliega el commit actual y confirma en la pestaña Network que la solicitud vaya a `/api/chat`; la respuesta incluye el header `X-Automa-Chat-Version: 2`.
 
 **Firebase devuelve `unauthorized-domain`.** Agrega el dominio exacto de Vercel en Authorized domains.
@@ -348,6 +350,8 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 - [`api/business.js`](api/business.js): función segura de Vercel y Firebase Admin.
 - [`api/chat.js`](api/chat.js): autenticación REST y conexión aislada con OpenAI.
 - [`server/domain.js`](server/domain.js): validación y planificación.
+- [`shared/models.js`](shared/models.js): catálogo y allowlist de modelos OpenAI.
+- [`shared/agents.js`](shared/agents.js): configuraciones iniciales de los cuatro agentes del template.
 - [`firestore.rules`](firestore.rules): aislamiento por usuario.
 - [`vercel.json`](vercel.json): build, salida, headers y rewrite.
 - [`demo.html`](demo.html): plantilla visual original.
