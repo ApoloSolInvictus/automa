@@ -69,7 +69,7 @@ export function parseCommand(body) {
     }
     return { action: body.action, collection, id, data };
   }
-  if (body.action === 'telegramStatus') return { action: body.action };
+  if (body.action === 'telegramStatus' || body.action === 'telegramRegister') return { action: body.action };
   if (body.action === 'saveProfile') {
     const name = text(body.name, 'Nombre', 120);
     return { action: body.action, name };

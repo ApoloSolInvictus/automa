@@ -47,6 +47,28 @@ async function telegramStatus(userUid) {
   }
 }
 
+async function registerTelegramWebhook(userUid) {
+  const token = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
+  const secret = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
+  const ownerUid = cleanEnv(process.env.TELEGRAM_OWNER_UID);
+  const webhookUrl = cleanEnv(process.env.TELEGRAM_WEBHOOK_URL) || 'https://automa.wstudio3d.com/api/telegram';
+  if (!token || !secret) return { ok: false, code: 'telegram_not_configured' };
+  if (!ownerUid || ownerUid !== userUid) return { ok: false, code: 'telegram_owner_mismatch' };
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/setWebhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: webhookUrl, secret_token: secret, allowed_updates: ['message', 'business_message'], drop_pending_updates: false }),
+      signal: AbortSignal.timeout(8000)
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok !== true) return { ok: false, code: 'telegram_webhook_register_failed' };
+    return { ok: true, code: 'telegram_webhook_registered', webhookUrl };
+  } catch {
+    return { ok: false, code: 'telegram_unreachable' };
+  }
+}
+
 async function services() {
   let { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -96,6 +118,10 @@ export default async function handler(req, res) {
     try { user = await auth.verifyIdToken(token, true); }
     catch { return res.status(401).json({ error: 'Sesión inválida. Vuelve a iniciar sesión.' }); }
     if (cmd.action === 'telegramStatus') return res.status(200).json(await telegramStatus(user.uid));
+    if (cmd.action === 'telegramRegister') {
+      const result = await registerTelegramWebhook(user.uid);
+      return res.status(result.ok ? 200 : result.code === 'telegram_owner_mismatch' ? 409 : 503).json(result);
+    }
     const root = db.collection('users').doc(user.uid);
     const now = new Date();
     const stamp = FieldValue.serverTimestamp();

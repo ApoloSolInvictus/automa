@@ -325,7 +325,7 @@ Marca `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como secretos. No los gua
 
 ### 6.2 Registrar el webhook
 
-Después de guardar las variables y desplegar, puedes traerlas a un archivo local protegido y ejecutar el registro. `.env.local` está excluido de Git:
+Después de guardar las variables y desplegar, puedes pulsar **Register webhook** en el Dashboard. Como alternativa, puedes traerlas a un archivo local protegido y ejecutar el registro. `.env.local` está excluido de Git:
 
 ```sh
 npx --yes vercel env pull .env.local production
@@ -345,7 +345,7 @@ El script llama a `setWebhook` con `https://automa.wstudio3d.com/api/telegram`, 
 5. Vercel carga el agente y su modelo desde Firestore, llama a OpenAI y devuelve la respuesta al mismo chat o al perfil empresarial.
 6. La conversación se conserva en `users/{uid}/channels/telegram/chats/{chatId}` y el identificador del evento en `users/{uid}/channels/telegram/updates/{updateId}`.
 
-En **Dashboard → Integrations → Telegram**, **Configure** guarda el username, el perfil empresarial, el agente que responderá y la URL pública. **Check status** consulta Telegram sin mostrar el token y confirma si el token es válido, si el webhook apunta a la URL correcta, cuántos eventos están pendientes y si `TELEGRAM_OWNER_UID` coincide con la cuenta iniciada.
+En **Dashboard → Integrations → Telegram**, **Configure** guarda el username, el perfil empresarial, el agente que responderá y la URL pública. **Register webhook** registra la URL usando el token privado de Vercel (requiere que `TELEGRAM_OWNER_UID` coincida con la cuenta iniciada). **Check status** consulta Telegram sin mostrar el token y confirma si el token es válido, si el webhook apunta a la URL correcta, cuántos eventos están pendientes y si `TELEGRAM_OWNER_UID` coincide con la cuenta iniciada.
 
 La primera versión procesa mensajes de texto y mantiene respuestas de texto. No ejecuta pagos, no envía correos y no modifica sistemas externos. Los mensajes con fotos, audio o documentos se ignoran hasta añadir transcripción o análisis de archivos. Para varios propietarios habrá que sustituir `TELEGRAM_OWNER_UID` por un flujo de vinculación de cuentas.
 

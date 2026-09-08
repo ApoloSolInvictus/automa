@@ -209,6 +209,16 @@ function wireWorkspace() {
     } catch (error) { alert(error.message); }
     finally { telegramStatusButton.disabled = false; }
   });
+  const telegramRegisterButton = section('integrations')?.querySelector('[data-telegram-register]');
+  telegramRegisterButton?.addEventListener('click', async () => {
+    if (!window.confirm('Register the Vercel webhook with Telegram now?')) return;
+    telegramRegisterButton.disabled = true;
+    try {
+      const result = await callBusiness({ action: 'telegramRegister' });
+      alert(result.ok ? `Webhook registered at ${result.webhookUrl}. Open @WSTUDIO3DBot and press START BOT.` : `Telegram setup failed: ${result.code}`);
+    } catch (error) { alert(error.message); }
+    finally { telegramRegisterButton.disabled = false; }
+  });
 }
 function subscribe(user) {
   const run = ++generation;
