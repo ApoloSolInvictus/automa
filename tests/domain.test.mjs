@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isAllowedTelegramWebhookUrl, parseCommand, planFollowUp } from '../server/domain.js';
+import { isAllowedTelegramWebhookSecret, isAllowedTelegramWebhookUrl, parseCommand, planFollowUp } from '../server/domain.js';
 import handler from '../api/business.js';
 const lead = { action: 'createLead', name: ' Cliente ', email: ' TEST@example.com ', value: 50, requestId: 'aabbbbbb-1111-4111-8111-111111111111' };
 test('normalizes lead without trusting supplied user identity', () => {
@@ -54,6 +54,13 @@ test('only accepts secure Automa or Vercel Telegram webhook URLs', () => {
  assert.equal(isAllowedTelegramWebhookUrl('https://example.com/api/telegram'), false);
  assert.equal(isAllowedTelegramWebhookUrl('https://attacker.vercel.app/api/telegram'), false);
  assert.equal(isAllowedTelegramWebhookUrl('https://automa.wstudio3d.com/api/telegram?x=1'), false);
+});
+test('validates Telegram webhook secret characters', () => {
+ assert.equal(isAllowedTelegramWebhookSecret('aZ09_-safe-token'), true);
+ assert.equal(isAllowedTelegramWebhookSecret('contains spaces'), false);
+ assert.equal(isAllowedTelegramWebhookSecret('contains.dot'), false);
+ assert.equal(isAllowedTelegramWebhookSecret(''), false);
+ assert.equal(isAllowedTelegramWebhookSecret('x'.repeat(257)), false);
 });
 test('API validates body size and malformed commands before connecting to services', async () => {
  for (const [body,status] of [[{},400],[{padding:'x'.repeat(13000)},413]]) {

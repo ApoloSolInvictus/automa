@@ -1,4 +1,4 @@
-import { InputError, isAllowedTelegramWebhookUrl, parseCommand, planFollowUp } from '../server/domain.js';
+import { InputError, isAllowedTelegramWebhookSecret, isAllowedTelegramWebhookUrl, parseCommand, planFollowUp } from '../server/domain.js';
 import { handleChatCommand, requestOpenAI } from './chat.js';
 import { DEFAULT_OPENAI_MODEL, isAllowedOpenAIModel } from '../shared/models.js';
 import { getDefaultAgent } from '../shared/agents.js';
@@ -64,6 +64,7 @@ async function registerTelegramWebhook(db, userUid) {
   const savedConfig = await telegramConfig(db, userUid);
   const webhookUrl = isAllowedTelegramWebhookUrl(savedConfig.webhookUrl) ? savedConfig.webhookUrl.trim() : configuredUrl;
   if (!token || !secret) return { ok: false, code: 'telegram_not_configured', error: 'Add TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET in Vercel Production.' };
+  if (!isAllowedTelegramWebhookSecret(secret)) return { ok: false, code: 'telegram_webhook_secret_invalid', error: 'TELEGRAM_WEBHOOK_SECRET must be 1-256 characters using only A-Z, a-z, 0-9, underscore or hyphen.' };
   if (!ownerUid || ownerUid !== userUid) return { ok: false, code: 'telegram_owner_mismatch', error: 'TELEGRAM_OWNER_UID must be the Firebase Authentication UID of the signed-in Dashboard user.' };
   if (!isAllowedTelegramWebhookUrl(webhookUrl)) return { ok: false, code: 'telegram_webhook_url_invalid', error: 'Set TELEGRAM_WEBHOOK_URL or the Dashboard webhook URL to a secure Automa/Vercel /api/telegram URL.' };
   try {

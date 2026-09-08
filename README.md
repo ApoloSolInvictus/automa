@@ -315,13 +315,13 @@ En **Project settings → Environment Variables**, agrega estas variables en Pro
 
 ```env
 TELEGRAM_BOT_TOKEN=                         # token que entrega @BotFather
-TELEGRAM_WEBHOOK_SECRET=                    # secreto nuevo, largo y aleatorio
+TELEGRAM_WEBHOOK_SECRET=                    # secreto nuevo, aleatorio; sólo A-Z a-z 0-9 _ -
 TELEGRAM_OWNER_UID=                         # UID del usuario propietario en Firebase Auth
 TELEGRAM_AGENT_ID=support-bot-v2-1
 TELEGRAM_WEBHOOK_URL=https://automa.wstudio3d.com/api/telegram
 ```
 
-Marca `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como secretos. No los guardes en Firestore, `.env.example`, GitHub ni en el navegador. `TELEGRAM_OWNER_UID` enlaza el chat de Telegram con la cuenta que contiene `users/{uid}/agents`; debe ser exactamente el **User UID** que aparece en Firebase Console → Authentication → Users para la cuenta con la que inicias sesión en el Dashboard. No uses el correo, la Web API Key ni el ID token. `TELEGRAM_AGENT_ID` puede ser `support-bot-v2-1`, `sales-qualifier`, `data-analyzer` o `email-automator`, o el ID de un agente que hayas guardado desde el dashboard.
+Marca `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como secretos. Telegram sólo acepta para `TELEGRAM_WEBHOOK_SECRET` entre 1 y 256 caracteres de `A-Z`, `a-z`, `0-9`, `_` o `-`; no uses espacios, puntos, comillas, `/`, `+` ni `=`. No los guardes en Firestore, `.env.example`, GitHub ni en el navegador. `TELEGRAM_OWNER_UID` enlaza el chat de Telegram con la cuenta que contiene `users/{uid}/agents`; debe ser exactamente el **User UID** que aparece en Firebase Console → Authentication → Users para la cuenta con la que inicias sesión en el Dashboard. No uses el correo, la Web API Key ni el ID token. `TELEGRAM_AGENT_ID` puede ser `support-bot-v2-1`, `sales-qualifier`, `data-analyzer` o `email-automator`, o el ID de un agente que hayas guardado desde el dashboard.
 
 ### 6.2 Registrar el webhook
 

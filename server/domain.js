@@ -10,6 +10,9 @@ export function isAllowedTelegramWebhookUrl(value) {
     return url.protocol === 'https:' && url.pathname === '/api/telegram' && !url.search && !url.hash && (hostname === 'automa.wstudio3d.com' || isAutomaVercel);
   } catch { return false; }
 }
+export function isAllowedTelegramWebhookSecret(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,256}$/.test(value.trim());
+}
 function text(value, label, max) {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max) throw new InputError(`${label}: valor inválido.`);
   return value.trim();

@@ -18,6 +18,7 @@ const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
 const secret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
 const url = (process.env.TELEGRAM_WEBHOOK_URL || 'https://automa.wstudio3d.com/api/telegram').trim();
 if (!token || !secret) throw new Error('Set TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET before running this command.');
+if (!/^[A-Za-z0-9_-]{1,256}$/.test(secret)) throw new Error('TELEGRAM_WEBHOOK_SECRET must be 1-256 characters using only A-Z, a-z, 0-9, underscore or hyphen.');
 const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/setWebhook`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
