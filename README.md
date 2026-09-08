@@ -106,8 +106,10 @@ La función `/api/business` necesita verificar tokens de Firebase y escribir en 
 ```env
 FIREBASE_PROJECT_ID=TU_PROJECT_ID
 FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@TU_PROJECT_ID.iam.gserviceaccount.com
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+FIREBASE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n
 ```
+
+En la pantalla de Vercel pega el valor de `private_key` sin las comillas exteriores del JSON. Conserva los saltos `\n`; el servidor acepta tanto esa representación como saltos de línea reales.
 
 `FIREBASE_PROJECT_ID` debe coincidir con `VITE_FIREBASE_PROJECT_ID`. La clave puede conservar saltos `\n` dentro de la variable. No pongas el prefijo `VITE_` en ninguna credencial privada.
 
@@ -289,7 +291,7 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 
 **La pantalla dice “Firebase pendiente de configuración”.** Faltan variables `VITE_FIREBASE_*` durante el build. Guarda las variables en Vercel y vuelve a desplegar.
 
-**La API devuelve 503.** Falta una variable privada, la clave tiene formato incorrecto o pertenece a otro proyecto.
+**La API devuelve 503.** Si aparece `firebase_server_not_configured`, falta una variable privada. Si aparece `firebase_admin_credentials`, vuelve a generar la clave de cuenta de servicio y copia exactamente `project_id`, `client_email` y `private_key` del mismo proyecto de Firebase. Las reglas de Firestore no corrigen un fallo de inicialización de Firebase Admin.
 
 **Firebase devuelve `unauthorized-domain`.** Agrega el dominio exacto de Vercel en Authorized domains.
 
