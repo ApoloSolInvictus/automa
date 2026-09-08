@@ -40,13 +40,24 @@ export default async function handler(req, res) {
       if (!process.env.OPENAI_API_KEY) return res.status(503).json({ error: 'OpenAI no está configurado en Vercel.' });
       const { default: OpenAI } = await import('openai');
       const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const response = await client.responses.create({
-        model: process.env.OPENAI_MODEL || 'gpt-6-astra',
-        store: false,
-        instructions: 'You are NexusAI, a concise business automation assistant. Answer in English. Discuss only support analytics, AI agents, workflow automation, and business metrics. Never claim to have executed an action. If asked to change data, explain that the user must use the dashboard action.',
-        input: [...cmd.history, { role: 'user', content: cmd.message }]
-      });
-      return res.status(200).json({ ok: true, reply: response.output_text || 'I could not generate a response.' });
+      try {
+        const response = await client.responses.create({
+          model: process.env.OPENAI_MODEL || 'gpt-5-mini',
+          store: false,
+          instructions: 'You are NexusAI, a concise business automation assistant. Answer in English. Discuss only support analytics, AI agents, workflow automation, and business metrics. Never claim to have executed an action. If asked to change data, explain that the user must use the dashboard action.',
+          input: [...cmd.history, { role: 'user', content: cmd.message }]
+        });
+        return res.status(200).json({ ok: true, reply: response.output_text || 'I could not generate a response.' });
+      } catch (error) {
+        const code = error?.code || error?.error?.code;
+        const status = error?.status || error?.statusCode;
+        if (status === 401 || code === 'invalid_api_key') return res.status(502).json({ error: 'OpenAI rejected the API key configured in Vercel.', code: 'invalid_api_key' });
+        if (code === 'insufficient_quota') return res.status(502).json({ error: 'The OpenAI API project has no available quota or credits.', code });
+        if (status === 429 || code === 'rate_limit_exceeded') return res.status(502).json({ error: 'OpenAI rate limit reached. Please retry shortly.', code: 'rate_limit_exceeded' });
+        if (status === 403 || code === 'model_not_found') return res.status(502).json({ error: 'The selected OpenAI model is not available to this project.', code: code || 'model_access' });
+        console.error('OpenAI request failed', { code: code || 'upstream_error', status: status || 0 });
+        return res.status(502).json({ error: 'OpenAI could not complete the request. Check OPENAI_MODEL and the project access in Vercel.', code: 'upstream_error' });
+      }
     }
     if (cmd.action === 'saveEntity') {
       const ref = cmd.id ? root.collection(cmd.collection).doc(cmd.id) : root.collection(cmd.collection).doc();

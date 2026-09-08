@@ -208,7 +208,7 @@ Casos apropiados: clasificar prospectos, extraer campos, resumir conversaciones 
 
 ```env
 OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-6-astra
+OPENAI_MODEL=gpt-5-mini
 ```
 
 En el repositorio solo deben quedar los nombres vacíos de [`.env.example`](.env.example). En Vercel crea `OPENAI_API_KEY` como **Sensitive**, selecciona Production y Preview según corresponda, y crea `OPENAI_MODEL` como variable normal. Si usas la CLI, los comandos solicitan el valor de forma interactiva:
@@ -233,7 +233,7 @@ El SDK `openai` ya está incluido en `package.json` y el endpoint `/api/business
 ```env
 # Server only; configúralo en Vercel; lo usa el chat del dashboard
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-6-astra
+OPENAI_MODEL=gpt-5-mini
 ```
 
 ### 5.4 Patrón de función de servidor
@@ -250,7 +250,7 @@ export default async function handler(req, res) {
   // 1. Verificar Firebase ID token y autorización del usuario.
   // 2. Validar tamaño, idioma y campos permitidos.
   const response = await client.responses.create({
-    model: process.env.OPENAI_MODEL || 'gpt-6-astra',
+    model: process.env.OPENAI_MODEL || 'gpt-5-mini',
     input: 'Clasifica este prospecto y devuelve solo una categoría permitida: ...'
   });
   // 3. Validar response.output_text contra un esquema cerrado.

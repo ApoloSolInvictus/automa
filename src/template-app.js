@@ -75,9 +75,9 @@ window.sendChat = async function sendChat() {
     const token = await auth.currentUser?.getIdToken();
     if (!token) throw new Error('AUTH');
     const response = await fetch('/api/business', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: 'chat', message, history: chat.slice(0, -1).slice(-19) }), signal: AbortSignal.timeout(35000) });
-    const data = await response.json(); if (!response.ok) throw new Error(data.error || 'OpenAI request failed.');
+    const data = await response.json(); if (!response.ok) { const failure = new Error(data.error || 'OpenAI request failed.'); failure.code = data.code; throw failure; }
     const reply = data.reply || 'I could not generate a response.'; chat.push({ role: 'assistant', content: reply }); window.appendMsg?.(reply, 'ai');
-  } catch (error) { window.appendMsg?.(error.message === 'OpenAI no está configurado en Vercel.' ? 'OpenAI is not configured in Vercel yet.' : 'I could not connect to the AI service. Check your Vercel environment variables.', 'ai'); }
+  } catch (error) { const message = error.message === 'OpenAI no está configurado en Vercel.' ? 'OpenAI is not configured in Vercel yet.' : error.message?.startsWith('OpenAI ') ? error.message : 'I could not connect to the AI service. Check your Vercel environment variables.'; window.appendMsg?.(message, 'ai'); }
   finally { if (typing) window.removeTyping?.(typing); }
 };
 
