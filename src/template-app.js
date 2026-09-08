@@ -12,7 +12,7 @@ const config = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
-let auth, db, stops = [], chat = [], generation = 0;
+let auth, db, stops = [], chat = [], generation = 0, chatPending = false;
 
 const $ = id => document.getElementById(id);
 function errorMessage(error) {
@@ -67,18 +67,20 @@ window.clearChat = function clearChat() { chat = []; originalClearChat?.(); };
 window.quickMsg = message => { if ($('chatInp')) $('chatInp').value = message; window.sendChat(); };
 window.sendChat = async function sendChat() {
   const input = $('chatInp'), message = input?.value.trim();
-  if (!message) return;
+  if (!message || chatPending) return;
+  chatPending = true;
+  const sendButton = $('chatSendBtn'); if (sendButton) sendButton.disabled = true;
   input.value = ''; input.style.height = 'auto';
   window.appendMsg?.(message, 'user'); chat.push({ role: 'user', content: message });
   const typing = window.appendTyping?.();
   try {
     const token = await auth.currentUser?.getIdToken();
     if (!token) throw new Error('AUTH');
-    const response = await fetch('/api/business', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: 'chat', message, history: chat.slice(0, -1).slice(-19) }), signal: AbortSignal.timeout(35000) });
-    const data = await response.json(); if (!response.ok) { const failure = new Error(data.error || 'OpenAI request failed.'); failure.code = data.code; throw failure; }
+    const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: 'chat', message, history: chat.slice(0, -1).slice(-19) }), signal: AbortSignal.timeout(35000) });
+    const data = await response.json().catch(() => ({})); if (!response.ok) { const failure = new Error(data.error || `Chat service returned HTTP ${response.status}.`); failure.code = data.code; throw failure; }
     const reply = data.reply || 'I could not generate a response.'; chat.push({ role: 'assistant', content: reply }); window.appendMsg?.(reply, 'ai');
-  } catch (error) { const message = error.message === 'AUTH' ? 'Your session expired. Please sign in again.' : error.message === 'OpenAI no está configurado en Vercel.' ? 'OpenAI is not configured in Vercel yet.' : error.message || 'I could not connect to the AI service. Check your Vercel environment variables.'; window.appendMsg?.(message, 'ai'); }
-  finally { if (typing) window.removeTyping?.(typing); }
+  } catch (error) { const message = error.message === 'AUTH' ? 'Your session expired. Please sign in again.' : error.name === 'TimeoutError' ? 'The AI service took too long to respond. Please try again.' : error.message || 'I could not connect to the AI service. Check your Vercel environment variables.'; window.appendMsg?.(message, 'ai'); }
+  finally { chatPending = false; if (sendButton) sendButton.disabled = false; if (typing) window.removeTyping?.(typing); input?.focus(); }
 };
 
 function updateStats(name, rows) {

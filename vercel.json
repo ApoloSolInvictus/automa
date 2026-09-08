@@ -3,11 +3,17 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "functions": { "api/business.js": {
-    "runtime": "nodejs22.x",
-    "maxDuration": 30,
-    "includeFiles": "node_modules/{firebase-admin,@google-cloud,google-auth-library,google-gax,jwks-rsa,jsonwebtoken,fast-deep-equal,@fastify}/**"
-  } },
+  "functions": {
+    "api/chat.js": {
+      "runtime": "nodejs22.x",
+      "maxDuration": 30
+    },
+    "api/business.js": {
+      "runtime": "nodejs22.x",
+      "maxDuration": 30,
+      "includeFiles": "node_modules/{firebase-admin,@google-cloud,google-auth-library,google-gax,jwks-rsa,jsonwebtoken,fast-deep-equal,@fastify}/**"
+    }
+  },
   "rewrites": [{ "source": "/dashboard", "destination": "/index.html" }],
   "headers": [{ "source": "/(.*)", "headers": [
     { "key": "X-Content-Type-Options", "value": "nosniff" },

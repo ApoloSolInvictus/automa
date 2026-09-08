@@ -16,8 +16,7 @@
   },
   "dependencies": {
     "firebase": "^12.18.0",
-    "firebase-admin": "^14.3.0",
-    "openai": "^7.10.0"
+    "firebase-admin": "^14.3.0"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

@@ -410,7 +410,7 @@ function updateChartColors() {
     });
 }
 
-/*  VISUAL AI CHAT DEMO — no external model is connected  */
+/*  AI CHAT FALLBACK — the module integration replaces sendChat in index.html  */
 function sendChat() {
     appendMsg('Demo visual: el chat de IA no está conectado.', 'ai');
 }
@@ -425,7 +425,7 @@ function appendMsg(text, role) {
     wrap.className = 'd-flex flex-column gap-1';
     wrap.innerHTML = `
     <div class="msg msg-${role}" style="animation:fadeIn .3s ease">${escapeHtml(text).replace(/\n/g,'<br>')}</div>
-    <div class="msg-time" style="align-self:${role==='ai'?'flex-start':'flex-end'};padding:0 4px">${role==='ai'?'NexusAI':'You'} Â· ${time}</div>`;
+    <div class="msg-time" style="align-self:${role==='ai'?'flex-start':'flex-end'};padding:0 4px">${role==='ai'?'NexusAI':'You'} · ${time}</div>`;
     body.appendChild(wrap);
     body.scrollTop = body.scrollHeight;
 }
@@ -453,8 +453,8 @@ function clearChat() {
     chatHistory = [];
     document.getElementById('chatBody').innerHTML = `
     <div class="d-flex flex-column gap-1">
-      <div class="msg msg-ai">ðŸ‘‹ Hi! I'm your NexusAI assistant. I can help you with support analytics, agent configuration, automation workflows, and business insights. What would you like to know?</div>
-      <div class="msg-time" style="align-self:flex-start;padding-left:4px">NexusAI Â· Just now</div>
+      <div class="msg msg-ai">👋 Hi! I'm your NexusAI assistant. I can help you with support analytics, agent configuration, automation workflows, and business insights. What would you like to know?</div>
+      <div class="msg-time" style="align-self:flex-start;padding-left:4px">NexusAI · Just now</div>
     </div>`;
 }
 

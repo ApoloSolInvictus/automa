@@ -18,7 +18,7 @@ La plantilla visual original de NexusAI se conserva en [`demo.html`](demo.html),
 | Automatización | Listo | Crea una tarea de seguimiento con vencimiento configurable |
 | Historial | Listo | Registra si la tarea fue creada u omitida |
 | Completar tareas | Listo | Completar y reabrir desde el dashboard |
-| IA | Disponible opcionalmente | El chat del dashboard usa `/api/business` y OpenAI cuando Vercel tiene `OPENAI_API_KEY` |
+| IA | Disponible opcionalmente | El chat del dashboard usa `/api/chat` y OpenAI cuando Vercel tiene `OPENAI_API_KEY` |
 | WhatsApp, email, Slack, CRM y pagos | Pendiente | Requieren integraciones y credenciales adicionales |
 | Ejecución al vencer una tarea | Pendiente | La fecha se guarda; todavía no existe un cron que envíe mensajes |
 | Equipos y organizaciones | Pendiente | Esta versión tiene un espacio individual por usuario |
@@ -96,7 +96,7 @@ No uses reglas de prueba como `allow read, write: if true`. Las reglas de este p
 
 ### 2.4 Crear la credencial del servidor
 
-La función `/api/business` necesita verificar tokens de Firebase y escribir en Firestore.
+La función `/api/business` necesita verificar tokens de Firebase y escribir en Firestore. El chat está aislado en `/api/chat`: valida la sesión con Firebase Authentication REST y no carga Firebase Admin.
 
 1. En Firebase abre **Project settings → Service accounts**.
 2. Pulsa **Generate new private key** y descarga el JSON una sola vez.
@@ -233,7 +233,7 @@ La guía oficial muestra el SDK JavaScript y `client.responses.create` en [OpenA
 
 ### 5.3 Activar el chat del dashboard
 
-El SDK `openai` ya está incluido en `package.json` y el endpoint `/api/business` acepta la acción `chat`. Agrega las variables a Vercel para Production y Preview. Puedes reflejar únicamente los nombres vacíos en `.env.example`, pero nunca escribas el valor real:
+El endpoint dedicado `/api/chat` llama a OpenAI desde el servidor y no depende del paquete de Firebase Admin. Agrega las variables a Vercel para Production y Preview. Puedes reflejar únicamente los nombres vacíos en `.env.example`, pero nunca escribas el valor real:
 
 ```env
 # Server only; configúralo en Vercel; lo usa el chat del dashboard
@@ -244,24 +244,28 @@ OPENAI_MODEL=gpt-5-mini
 
 ### 5.4 Patrón de función de servidor
 
-El código debe vivir en `api/`, nunca en el navegador:
+El código debe vivir en `api/`, nunca en el navegador. La implementación usa `POST https://api.openai.com/v1/responses`, conserva `store: false` y extrae los elementos `output_text` de la respuesta:
 
 ```js
-import OpenAI from 'openai';
-
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Usa POST.' });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST.' });
   // 1. Verificar Firebase ID token y autorización del usuario.
   // 2. Validar tamaño, idioma y campos permitidos.
-  const response = await client.responses.create({
-    model: process.env.OPENAI_MODEL || 'gpt-5-mini',
-    input: 'Clasifica este prospecto y devuelve solo una categoría permitida: ...'
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || 'gpt-5-mini',
+      store: false,
+      input: 'Summarize this business conversation: ...'
+    })
   });
-  // 3. Validar response.output_text contra un esquema cerrado.
-  // 4. Guardar resultado y auditoría en Firestore.
-  return res.status(200).json({ result: response.output_text });
+  const data = await response.json();
+  // 3. Extraer y validar output[].content[].text.
+  return res.status(response.status).json(data);
 }
 ```
 
@@ -297,6 +301,8 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 
 **La API devuelve 503.** Si aparece `firebase_server_not_configured`, falta una variable privada. Si aparece `firebase_admin_credentials`, vuelve a generar la clave de cuenta de servicio y copia exactamente `project_id`, `client_email` y `private_key` del mismo proyecto de Firebase. Las reglas de Firestore no corrigen un fallo de inicialización de Firebase Admin.
 
+**El chat muestra `firebase_admin_sdk_load`.** El navegador está usando una versión anterior que todavía enviaba el chat a `/api/business`. Despliega el commit actual y confirma en la pestaña Network que la solicitud vaya a `/api/chat`; la respuesta incluye el header `X-Automa-Chat-Version: 2`.
+
 **Firebase devuelve `unauthorized-domain`.** Agrega el dominio exacto de Vercel en Authorized domains.
 
 **Firebase devuelve `permission-denied`.** Publica [`firestore.rules`](firestore.rules), confirma sesión y revisa que el proyecto de las variables sea el mismo.
@@ -311,6 +317,7 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 - [`src/app.js`](src/app.js): Authentication, listeners y dashboard.
 - [`src/app.css`](src/app.css): interfaz responsive.
 - [`api/business.js`](api/business.js): función segura de Vercel y Firebase Admin.
+- [`api/chat.js`](api/chat.js): autenticación REST y conexión aislada con OpenAI.
 - [`server/domain.js`](server/domain.js): validación y planificación.
 - [`firestore.rules`](firestore.rules): aislamiento por usuario.
 - [`vercel.json`](vercel.json): build, salida, headers y rewrite.
