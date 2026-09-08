@@ -6,16 +6,7 @@
   "functions": { "api/business.js": {
     "runtime": "nodejs22.x",
     "maxDuration": 30,
-    "includeFiles": [
-      "node_modules/firebase-admin/**",
-      "node_modules/@google-cloud/**",
-      "node_modules/google-auth-library/**",
-      "node_modules/google-gax/**",
-      "node_modules/jwks-rsa/**",
-      "node_modules/jsonwebtoken/**",
-      "node_modules/fast-deep-equal/**",
-      "node_modules/@fastify/**"
-    ]
+    "includeFiles": "node_modules/firebase-admin/**"
   } },
   "rewrites": [{ "source": "/dashboard", "destination": "/index.html" }],
   "headers": [{ "source": "/(.*)", "headers": [
