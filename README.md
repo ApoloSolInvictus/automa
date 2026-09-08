@@ -111,6 +111,8 @@ FIREBASE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----
 
 En la pantalla de Vercel pega el valor de `private_key` sin las comillas exteriores del JSON. Conserva los saltos `\n`; el servidor acepta tanto esa representación como saltos de línea reales.
 
+Como alternativa, puedes guardar el JSON completo de la cuenta de servicio en una variable privada llamada `FIREBASE_SERVICE_ACCOUNT_JSON`; el servidor extrae `project_id`, `client_email` y `private_key` automáticamente. No la añadas a `VITE_` ni al repositorio.
+
 `FIREBASE_PROJECT_ID` debe coincidir con `VITE_FIREBASE_PROJECT_ID`. La clave puede conservar saltos `\n` dentro de la variable. No pongas el prefijo `VITE_` en ninguna credencial privada.
 
 La cuenta de servicio debe pertenecer al mismo proyecto y conservar permisos para Firestore y Firebase Authentication. Si tu organización aplica IAM personalizado, concede únicamente los permisos necesarios para verificar tokens y leer/escribir Firestore.
