@@ -1,7 +1,8 @@
 import { InputError, parseCommand, planFollowUp } from '../server/domain.js';
-import { cert, getApps, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const firebaseAdmin = require('firebase-admin');
 
 async function services() {
   const { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
@@ -11,9 +12,9 @@ async function services() {
   const normalizedClientEmail = clean(clientEmail);
   const normalizedPrivateKey = clean(privateKey).replace(/\\n/g, '\n');
   let app;
-  try { app = getApps()[0] || initializeApp({ credential: cert({ projectId: normalizedProjectId, clientEmail: normalizedClientEmail, privateKey: normalizedPrivateKey }) }); }
+  try { app = firebaseAdmin.getApps()[0] || firebaseAdmin.initializeApp({ credential: firebaseAdmin.credential.cert({ projectId: normalizedProjectId, clientEmail: normalizedClientEmail, privateKey: normalizedPrivateKey }) }); }
   catch (error) { throw Object.assign(new Error('FIREBASE_ADMIN_CREDENTIALS'), { code: 'firebase_admin_credentials', cause: error }); }
-  return { auth: getAuth(app), db: getFirestore(app), FieldValue };
+  return { auth: firebaseAdmin.getAuth(app), db: firebaseAdmin.getFirestore(app), FieldValue: firebaseAdmin.firestore.FieldValue };
 }
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
