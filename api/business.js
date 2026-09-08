@@ -3,11 +3,14 @@ import { InputError, parseCommand, planFollowUp } from '../server/domain.js';
 async function services() {
   const { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
   if (!projectId || !clientEmail || !privateKey) throw new Error('SERVER_NOT_CONFIGURED');
-  const normalizedPrivateKey = privateKey.trim().replace(/^(["'])|(["'])$/g, '').replace(/\\n/g, '\n');
+  const clean = value => value.trim().replace(/^["']|["']$/g, '');
+  const normalizedProjectId = clean(projectId);
+  const normalizedClientEmail = clean(clientEmail);
+  const normalizedPrivateKey = clean(privateKey).replace(/\\n/g, '\n');
   const { cert, getApps, initializeApp } = await import('firebase-admin/app');
   const { getAuth } = await import('firebase-admin/auth');
   const { getFirestore, FieldValue } = await import('firebase-admin/firestore');
-  const app = getApps()[0] || initializeApp({ credential: cert({ projectId, clientEmail, privateKey: normalizedPrivateKey }) });
+  const app = getApps()[0] || initializeApp({ credential: cert({ projectId: normalizedProjectId, clientEmail: normalizedClientEmail, privateKey: normalizedPrivateKey }) });
   return { auth: getAuth(app), db: getFirestore(app), FieldValue };
 }
 export default async function handler(req, res) {
