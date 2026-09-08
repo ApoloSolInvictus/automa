@@ -345,6 +345,8 @@ El script llama a `setWebhook` con `https://automa.wstudio3d.com/api/telegram`, 
 5. Vercel carga el agente y su modelo desde Firestore, llama a OpenAI y devuelve la respuesta al mismo chat o al perfil empresarial.
 6. La conversación se conserva en `users/{uid}/channels/telegram/chats/{chatId}` y el identificador del evento en `users/{uid}/channels/telegram/updates/{updateId}`.
 
+En **Dashboard → Integrations → Telegram**, **Configure** guarda el username, el perfil empresarial, el agente que responderá y la URL pública. **Check status** consulta Telegram sin mostrar el token y confirma si el token es válido, si el webhook apunta a la URL correcta, cuántos eventos están pendientes y si `TELEGRAM_OWNER_UID` coincide con la cuenta iniciada.
+
 La primera versión procesa mensajes de texto y mantiene respuestas de texto. No ejecuta pagos, no envía correos y no modifica sistemas externos. Los mensajes con fotos, audio o documentos se ignoran hasta añadir transcripción o análisis de archivos. Para varios propietarios habrá que sustituir `TELEGRAM_OWNER_UID` por un flujo de vinculación de cuentas.
 
 ## 7. Pruebas y verificación
@@ -383,7 +385,7 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 
 **OpenAI devuelve `401`.** La clave no está disponible para la función, está revocada o pertenece a otro proyecto. Revisa `OPENAI_API_KEY` en Vercel; nunca la pruebes desde el navegador.
 
-**Telegram no responde.** Confirma que `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_OWNER_UID` y `TELEGRAM_AGENT_ID` existan en el mismo entorno de Vercel que el dominio público. Ejecuta de nuevo `npm run telegram:set-webhook`, comprueba que el bot tenga una conversación iniciada con **START BOT** y revisa los logs de la función `/api/telegram`. Un token inválido o un secreto incorrecto produce `401`; una configuración incompleta produce `503`.
+**Telegram no responde.** Abre **Dashboard → Integrations → Telegram → Check status**. Si el webhook aparece como `not registered` o `different URL`, ejecuta de nuevo `npm run telegram:set-webhook`; si el usuario propietario no coincide, corrige `TELEGRAM_OWNER_UID` con el UID de Firebase Authentication. Confirma que `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_OWNER_UID` y `TELEGRAM_AGENT_ID` existan en el mismo entorno de Vercel que el dominio público, que el bot esté conectado en Telegram Business y que el chat directo se haya iniciado con **START BOT**. Un token inválido o un secreto incorrecto produce `401`; una configuración incompleta produce `503`.
 
 **El emulador no inicia.** Instala Java 21+ y vuelve a ejecutar `npm run test:rules`.
 
