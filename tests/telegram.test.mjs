@@ -13,7 +13,10 @@ function response() {
 
 test('parses only bounded Telegram text messages', () => {
   const parsed = parseTelegramUpdate({ update_id: 42, message: { message_id: 7, chat: { id: 123 }, text: ' Hello bot ' } });
-  assert.deepEqual(parsed, { updateId: '42', chatId: '123', messageId: '7', text: 'Hello bot' });
+  assert.deepEqual(parsed, { updateId: '42', chatId: '123', messageId: '7', text: 'Hello bot', businessConnectionId: null });
+  const business = parseTelegramUpdate({ update_id: 43, business_message: { business_connection_id: 'business-1', message_id: 8, chat: { id: 456 }, text: 'Business hello' } });
+  assert.equal(business.businessConnectionId, 'business-1');
+  assert.equal(business.chatId, '456');
   assert.equal(parseTelegramUpdate({ message: { chat: { id: 123 }, text: '' } }), null);
   assert.equal(parseTelegramUpdate({ message: { chat: { id: 123 }, text: 'x'.repeat(4001) } }), null);
   assert.equal(parseTelegramUpdate({ message: { chat: { id: 123 }, photo: [] } }), null);

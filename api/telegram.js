@@ -10,17 +10,22 @@ const cleanEnv = value => typeof value === 'string'
   : '';
 
 export function parseTelegramUpdate(update) {
-  const message = update?.message;
+  const message = update?.message || update?.business_message;
   const chatId = message?.chat?.id;
   const text = typeof message?.text === 'string' ? message.text.trim() : '';
   if ((typeof chatId !== 'number' && typeof chatId !== 'string') || !text || text.length > 4000) return null;
   const updateId = update?.update_id == null ? null : String(update.update_id);
   if (updateId && !/^\d{1,30}$/.test(updateId)) return null;
+  const businessConnectionId = typeof update?.business_message?.business_connection_id === 'string'
+    ? update.business_message.business_connection_id.trim()
+    : null;
+  if (businessConnectionId && businessConnectionId.length > 256) return null;
   return {
     updateId,
     chatId: String(chatId),
     messageId: message.message_id == null ? null : String(message.message_id),
-    text
+    text,
+    businessConnectionId
   };
 }
 
@@ -65,12 +70,14 @@ function adminServices() {
   return { db: getFirestore(app) };
 }
 
-async function sendTelegramMessage(token, chatId, text) {
+async function sendTelegramMessage(token, chatId, text, businessConnectionId = null) {
   for (const chunk of splitTelegramText(text)) {
+    const body = { chat_id: chatId, text: chunk };
+    if (businessConnectionId) body.business_connection_id = businessConnectionId;
     const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: chunk }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(8000)
     });
     const payload = await responseJson(response);
@@ -119,14 +126,15 @@ export default async function handler(req, res) {
     ].filter(Boolean).join(' ');
     const result = await requestOpenAI(command, { model, instructions });
     if (result.status !== 200 || !result.body?.reply) return res.status(502).json({ error: 'OpenAI could not answer the Telegram message.', code: result.body?.code || 'telegram_openai_failed' });
-    await sendTelegramMessage(token, incoming.chatId, result.body.reply);
+    await sendTelegramMessage(token, incoming.chatId, result.body.reply, incoming.businessConnectionId);
     await conversationRef.set({
       history: [...previous, { role: 'user', content: incoming.text }, { role: 'assistant', content: result.body.reply }].slice(-20),
       agentId,
       model,
+      ...(incoming.businessConnectionId ? { businessConnectionId: incoming.businessConnectionId } : {}),
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
-    if (updateRef) await updateRef.set({ chatId: incoming.chatId, messageId: incoming.messageId, agentId, createdAt: FieldValue.serverTimestamp() });
+    if (updateRef) await updateRef.set({ chatId: incoming.chatId, messageId: incoming.messageId, agentId, ...(incoming.businessConnectionId ? { businessConnectionId: incoming.businessConnectionId } : {}), createdAt: FieldValue.serverTimestamp() });
     return res.status(200).json({ ok: true, agent: agent.name, model });
   } catch (error) {
     console.error('Telegram webhook failed', { code: error?.code || error?.name || 'internal_error' });

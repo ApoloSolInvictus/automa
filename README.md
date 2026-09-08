@@ -334,15 +334,16 @@ npm run telegram:set-webhook
 
 También puedes exportar las cinco variables en tu terminal sin crear un archivo local. El script lee `.env.local` o `.env` automáticamente si existen.
 
-El script llama a `setWebhook` con `https://automa.wstudio3d.com/api/telegram`, limita los eventos a mensajes y configura `secret_token`. Telegram enviará ese secreto en el encabezado `X-Telegram-Bot-Api-Secret-Token`; la función rechaza cualquier solicitud sin coincidencia. Esta validación está contemplada por la documentación oficial de Telegram ([Bot API](https://core.telegram.org/bots/api)).
+El script llama a `setWebhook` con `https://automa.wstudio3d.com/api/telegram`, habilita mensajes normales y `business_message`, y configura `secret_token`. Telegram enviará ese secreto en el encabezado `X-Telegram-Bot-Api-Secret-Token`; la función rechaza cualquier solicitud sin coincidencia. Esta validación y el parámetro `business_connection_id` están contemplados por la documentación oficial de Telegram ([Bot API](https://core.telegram.org/bots/api), [Connected business bots](https://core.telegram.org/api/bots/connected-business-bots)).
 
 ### 6.3 Probar el flujo
 
-1. Abre `@WSTUDIO3DBot` y pulsa **START BOT**.
-2. Envía un mensaje de texto, por ejemplo: `Help me qualify this new lead.`
-3. Telegram entrega el evento al webhook de Vercel.
-4. Vercel carga el agente y su modelo desde Firestore, llama a OpenAI y devuelve la respuesta al mismo chat.
-5. La conversación se conserva en `users/{uid}/channels/telegram/chats/{chatId}` y el identificador del evento en `users/{uid}/channels/telegram/updates/{updateId}`.
+1. En Telegram Business, conecta `@WSTUDIO3DBot` como bot empresarial desde los ajustes de tu cuenta.
+2. Abre `@WSTUDIO3DBot` y pulsa **START BOT** para probar también el chat directo.
+3. Envía un mensaje de texto, por ejemplo: `Help me qualify this new lead.`
+4. Telegram entrega `message` o `business_message` al webhook de Vercel.
+5. Vercel carga el agente y su modelo desde Firestore, llama a OpenAI y devuelve la respuesta al mismo chat o al perfil empresarial.
+6. La conversación se conserva en `users/{uid}/channels/telegram/chats/{chatId}` y el identificador del evento en `users/{uid}/channels/telegram/updates/{updateId}`.
 
 La primera versión procesa mensajes de texto y mantiene respuestas de texto. No ejecuta pagos, no envía correos y no modifica sistemas externos. Los mensajes con fotos, audio o documentos se ignoran hasta añadir transcripción o análisis de archivos. Para varios propietarios habrá que sustituir `TELEGRAM_OWNER_UID` por un flujo de vinculación de cuentas.
 

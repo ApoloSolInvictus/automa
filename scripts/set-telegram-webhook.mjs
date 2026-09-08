@@ -21,7 +21,7 @@ if (!token || !secret) throw new Error('Set TELEGRAM_BOT_TOKEN and TELEGRAM_WEBH
 const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/setWebhook`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ url, secret_token: secret, allowed_updates: ['message'], drop_pending_updates: false })
+  body: JSON.stringify({ url, secret_token: secret, allowed_updates: ['message', 'business_message'], drop_pending_updates: false })
 });
 const payload = await response.json().catch(() => ({}));
 if (!response.ok || payload.ok !== true) throw new Error(payload?.description || 'Telegram rejected the webhook.');
