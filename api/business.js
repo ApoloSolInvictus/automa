@@ -1,6 +1,9 @@
 import { InputError, parseCommand, planFollowUp } from '../server/domain.js';
 
-const loadModule = specifier => new Function('name', 'return import(name);')(specifier);
+const loadModule = async specifier => {
+  try { return eval('require')(specifier); }
+  catch { return import(specifier); }
+};
 
 async function services() {
   let { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
