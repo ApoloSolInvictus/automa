@@ -5,12 +5,21 @@ const require = createRequire(import.meta.url);
 const firebaseAdmin = require('firebase-admin');
 
 async function services() {
-  const { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
+  let { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (serviceAccountJson) {
+    try {
+      const account = JSON.parse(serviceAccountJson);
+      projectId ||= account.project_id;
+      clientEmail ||= account.client_email;
+      privateKey ||= account.private_key;
+    } catch { throw Object.assign(new Error('FIREBASE_ADMIN_CREDENTIALS'), { code: 'firebase_admin_credentials' }); }
+  }
   if (!projectId || !clientEmail || !privateKey) throw new Error('SERVER_NOT_CONFIGURED');
-  const clean = value => value.trim().replace(/^["']|["']$/g, '');
+  const clean = value => value.trim().replace(/^["']|["']$/g, '').replace(/\\+n/g, '\n').replace(/\\"/g, '"');
   const normalizedProjectId = clean(projectId);
   const normalizedClientEmail = clean(clientEmail);
-  const normalizedPrivateKey = clean(privateKey).replace(/\\n/g, '\n');
+  const normalizedPrivateKey = clean(privateKey).replace(/\r/g, '');
   let app;
   try { app = firebaseAdmin.getApps()[0] || firebaseAdmin.initializeApp({ credential: firebaseAdmin.credential.cert({ projectId: normalizedProjectId, clientEmail: normalizedClientEmail, privateKey: normalizedPrivateKey }) }); }
   catch (error) { throw Object.assign(new Error('FIREBASE_ADMIN_CREDENTIALS'), { code: 'firebase_admin_credentials', cause: error }); }
