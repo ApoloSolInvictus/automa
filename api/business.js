@@ -17,7 +17,7 @@ async function telegramStatus(userUid) {
   const agentId = cleanEnv(process.env.TELEGRAM_AGENT_ID) || 'support-bot-v2-1';
   const webhookUrl = cleanEnv(process.env.TELEGRAM_WEBHOOK_URL) || 'https://automa.wstudio3d.com/api/telegram';
   const variables = { botToken: Boolean(token), webhookSecret: Boolean(secret), ownerUid: Boolean(ownerUid), agentId: Boolean(agentId), webhookUrl: Boolean(webhookUrl) };
-  if (!token) return { ok: false, code: 'telegram_not_configured', variables, ownerUidMatches: false };
+  if (!token) return { ok: false, code: 'telegram_not_configured', error: 'Add TELEGRAM_BOT_TOKEN in Vercel Production.', variables, ownerUidMatches: false };
   try {
     const [meResponse, webhookResponse] = await Promise.all([
       fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/getMe`, { signal: AbortSignal.timeout(8000) }),
@@ -25,7 +25,7 @@ async function telegramStatus(userUid) {
     ]);
     const me = await meResponse.json().catch(() => ({}));
     const webhook = await webhookResponse.json().catch(() => ({}));
-    if (!meResponse.ok || me.ok !== true) return { ok: false, code: 'telegram_token_invalid', variables, ownerUidMatches: ownerUid === userUid };
+    if (!meResponse.ok || me.ok !== true) return { ok: false, code: 'telegram_token_invalid', error: 'Telegram rejected TELEGRAM_BOT_TOKEN.', variables, ownerUidMatches: ownerUid === userUid };
     const info = webhook?.result || {};
     const configuredUrl = typeof info.url === 'string' ? info.url : '';
     return {
@@ -43,7 +43,7 @@ async function telegramStatus(userUid) {
       agentId
     };
   } catch {
-    return { ok: false, code: 'telegram_unreachable', variables, ownerUidMatches: ownerUid === userUid };
+    return { ok: false, code: 'telegram_unreachable', error: 'Telegram could not be reached from the Vercel function.', variables, ownerUidMatches: ownerUid === userUid };
   }
 }
 
@@ -52,8 +52,8 @@ async function registerTelegramWebhook(userUid) {
   const secret = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
   const ownerUid = cleanEnv(process.env.TELEGRAM_OWNER_UID);
   const webhookUrl = cleanEnv(process.env.TELEGRAM_WEBHOOK_URL) || 'https://automa.wstudio3d.com/api/telegram';
-  if (!token || !secret) return { ok: false, code: 'telegram_not_configured' };
-  if (!ownerUid || ownerUid !== userUid) return { ok: false, code: 'telegram_owner_mismatch' };
+  if (!token || !secret) return { ok: false, code: 'telegram_not_configured', error: 'Add TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET in Vercel Production.' };
+  if (!ownerUid || ownerUid !== userUid) return { ok: false, code: 'telegram_owner_mismatch', error: 'TELEGRAM_OWNER_UID must be the Firebase Authentication UID of the signed-in Dashboard user.' };
   try {
     const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/setWebhook`, {
       method: 'POST',
@@ -62,10 +62,10 @@ async function registerTelegramWebhook(userUid) {
       signal: AbortSignal.timeout(8000)
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload.ok !== true) return { ok: false, code: 'telegram_webhook_register_failed' };
+    if (!response.ok || payload.ok !== true) return { ok: false, code: 'telegram_webhook_register_failed', error: 'Telegram rejected the webhook URL or token.' };
     return { ok: true, code: 'telegram_webhook_registered', webhookUrl };
   } catch {
-    return { ok: false, code: 'telegram_unreachable' };
+    return { ok: false, code: 'telegram_unreachable', error: 'Telegram could not be reached from the Vercel function.' };
   }
 }
 

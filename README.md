@@ -321,7 +321,7 @@ TELEGRAM_AGENT_ID=support-bot-v2-1
 TELEGRAM_WEBHOOK_URL=https://automa.wstudio3d.com/api/telegram
 ```
 
-Marca `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como secretos. No los guardes en Firestore, `.env.example`, GitHub ni en el navegador. `TELEGRAM_OWNER_UID` enlaza el chat de Telegram con la cuenta que contiene `users/{uid}/agents`; para una primera instalación usa el UID de tu usuario en Firebase Authentication. `TELEGRAM_AGENT_ID` puede ser `support-bot-v2-1`, `sales-qualifier`, `data-analyzer` o `email-automator`, o el ID de un agente que hayas guardado desde el dashboard.
+Marca `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como secretos. No los guardes en Firestore, `.env.example`, GitHub ni en el navegador. `TELEGRAM_OWNER_UID` enlaza el chat de Telegram con la cuenta que contiene `users/{uid}/agents`; debe ser exactamente el **User UID** que aparece en Firebase Console → Authentication → Users para la cuenta con la que inicias sesión en el Dashboard. No uses el correo, la Web API Key ni el ID token. `TELEGRAM_AGENT_ID` puede ser `support-bot-v2-1`, `sales-qualifier`, `data-analyzer` o `email-automator`, o el ID de un agente que hayas guardado desde el dashboard.
 
 ### 6.2 Registrar el webhook
 
