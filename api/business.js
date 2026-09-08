@@ -87,6 +87,8 @@ export default async function handler(req, res) {
     return res.status(200).json(result);
   } catch (error) {
     if (error instanceof InputError) return res.status(400).json({ error: error.message });
+    if (error?.message === 'SERVER_NOT_CONFIGURED') return res.status(503).json({ error: 'Firebase Admin is not configured in Vercel. Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY.', code: 'firebase_server_not_configured' });
+    if (error?.code === 'app/invalid-credential' || error?.code === 'app/invalid-app-argument') return res.status(503).json({ error: 'Firebase Admin credentials in Vercel are invalid. Check FIREBASE_PRIVATE_KEY and the service account project.', code: 'firebase_admin_credentials' });
     console.error('business request failed', { code: error.code || 'internal' });
     return res.status(503).json({ error: 'Servicio no disponible. Revisa la configuración de Firebase del servidor.' });
   }
