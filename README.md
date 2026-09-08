@@ -134,6 +134,8 @@ users/{uid}/contacts/{contactId}
 users/{uid}/opportunities/{opportunityId}
 users/{uid}/activities/{activityId}
 users/{uid}/memberships/{organizationId}
+users/{uid}/channels/telegram/chats/{chatId}
+users/{uid}/channels/telegram/updates/{updateId}
 organizations/{organizationId}
 organizations/{organizationId}/members/{uid}
 organizations/{organizationId}/invitations/{invitationId}

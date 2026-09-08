@@ -230,13 +230,16 @@ async function clearDemoData(db, root) {
   }
   return references.length;
 }
-const WORKSPACE_DATA_COLLECTIONS = ['leads', 'tasks', 'runs', 'internal', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities'];
+const WORKSPACE_DATA_COLLECTIONS = ['leads', 'tasks', 'runs', 'internal', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities', 'channels'];
+async function collectWorkspaceReferences(collectionRef, references) {
+  for (const documentRef of await collectionRef.listDocuments()) {
+    for (const subcollection of await documentRef.listCollections()) await collectWorkspaceReferences(subcollection, references);
+    references.push(documentRef);
+  }
+}
 async function clearWorkspaceData(db, root) {
   const references = [];
-  for (const collection of WORKSPACE_DATA_COLLECTIONS) {
-    const snapshot = await root.collection(collection).get();
-    snapshot.docs.forEach(doc => references.push(doc.ref));
-  }
+  for (const collection of WORKSPACE_DATA_COLLECTIONS) await collectWorkspaceReferences(root.collection(collection), references);
   for (let index = 0; index < references.length; index += 400) {
     const batch = db.batch();
     references.slice(index, index + 400).forEach(reference => batch.delete(reference));
