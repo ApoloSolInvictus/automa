@@ -1,9 +1,5 @@
 import { InputError, parseCommand, planFollowUp } from '../server/domain.js';
-
-const loadModule = async specifier => {
-  try { return eval('require')(specifier); }
-  catch { return import(specifier); }
-};
+import { createRequire } from 'node:module';
 
 async function services() {
   let { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
@@ -23,9 +19,10 @@ async function services() {
   const normalizedPrivateKey = clean(privateKey).replace(/\r/g, '');
   let adminApp, adminCert, adminGetApps, adminInitializeApp, adminGetAuth, adminGetFirestore, adminFieldValue;
   try {
-    ({ cert: adminCert, getApps: adminGetApps, initializeApp: adminInitializeApp } = await loadModule('firebase-admin/app'));
-    ({ getAuth: adminGetAuth } = await loadModule('firebase-admin/auth'));
-    ({ getFirestore: adminGetFirestore, FieldValue: adminFieldValue } = await loadModule('firebase-admin/firestore'));
+    const runtimeRequire = createRequire(`${process.cwd()}/api/business.js`);
+    ({ cert: adminCert, getApps: adminGetApps, initializeApp: adminInitializeApp } = runtimeRequire('firebase-admin/app'));
+    ({ getAuth: adminGetAuth } = runtimeRequire('firebase-admin/auth'));
+    ({ getFirestore: adminGetFirestore, FieldValue: adminFieldValue } = runtimeRequire('firebase-admin/firestore'));
   } catch (error) {
     throw Object.assign(new Error('FIREBASE_ADMIN_SDK_LOAD'), { code: 'firebase_admin_sdk_load', cause: error });
   }
