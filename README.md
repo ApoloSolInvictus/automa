@@ -92,7 +92,7 @@ npx --yes firebase-tools use --add TU_PROJECT_ID
 npx --yes firebase-tools deploy --only firestore:rules --project TU_PROJECT_ID
 ```
 
-No uses reglas de prueba como `allow read, write: if true`. Las reglas de este proyecto permiten lecturas únicamente al UID propietario y bloquean escrituras directas desde el navegador. La función de servidor escribe mediante Firebase Admin después de validar la sesión.
+No uses reglas de prueba como `allow read, write: if true`. Las reglas de este proyecto permiten lecturas únicamente al UID propietario y bloquean escrituras directas desde el navegador. Las operaciones de datos del servidor usan Firebase Admin después de validar la sesión; el chat valida el ID token mediante Firebase Authentication REST.
 
 ### 2.4 Crear la credencial del servidor
 
@@ -237,6 +237,7 @@ El SDK `openai` ya está incluido en `package.json` y el endpoint `/api/business
 
 ```env
 # Server only; configúralo en Vercel; lo usa el chat del dashboard
+FIREBASE_WEB_API_KEY=
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5-mini
 ```
