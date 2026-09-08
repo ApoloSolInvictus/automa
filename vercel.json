@@ -6,7 +6,7 @@
   "functions": { "api/business.js": {
     "runtime": "nodejs22.x",
     "maxDuration": 30,
-    "includeFiles": "node_modules/firebase-admin/**"
+    "includeFiles": "node_modules/{firebase-admin,@google-cloud,google-auth-library,google-gax,jwks-rsa,jsonwebtoken,fast-deep-equal,@fastify}/**"
   } },
   "rewrites": [{ "source": "/dashboard", "destination": "/index.html" }],
   "headers": [{ "source": "/(.*)", "headers": [
