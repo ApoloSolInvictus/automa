@@ -6,6 +6,47 @@ import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 
+function cleanEnv(value) {
+  return typeof value === 'string' ? value.trim().replace(/^(["'])(.*)\1$/s, '$2').trim() : '';
+}
+
+async function telegramStatus(userUid) {
+  const token = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
+  const secret = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
+  const ownerUid = cleanEnv(process.env.TELEGRAM_OWNER_UID);
+  const agentId = cleanEnv(process.env.TELEGRAM_AGENT_ID) || 'support-bot-v2-1';
+  const webhookUrl = cleanEnv(process.env.TELEGRAM_WEBHOOK_URL) || 'https://automa.wstudio3d.com/api/telegram';
+  const variables = { botToken: Boolean(token), webhookSecret: Boolean(secret), ownerUid: Boolean(ownerUid), agentId: Boolean(agentId), webhookUrl: Boolean(webhookUrl) };
+  if (!token) return { ok: false, code: 'telegram_not_configured', variables, ownerUidMatches: false };
+  try {
+    const [meResponse, webhookResponse] = await Promise.all([
+      fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/getMe`, { signal: AbortSignal.timeout(8000) }),
+      fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/getWebhookInfo`, { signal: AbortSignal.timeout(8000) })
+    ]);
+    const me = await meResponse.json().catch(() => ({}));
+    const webhook = await webhookResponse.json().catch(() => ({}));
+    if (!meResponse.ok || me.ok !== true) return { ok: false, code: 'telegram_token_invalid', variables, ownerUidMatches: ownerUid === userUid };
+    const info = webhook?.result || {};
+    const configuredUrl = typeof info.url === 'string' ? info.url : '';
+    return {
+      ok: true,
+      code: 'telegram_status_ok',
+      variables,
+      ownerUidMatches: Boolean(ownerUid && ownerUid === userUid),
+      bot: { username: me.result?.username || null, name: me.result?.first_name || null },
+      webhook: {
+        urlConfigured: Boolean(configuredUrl),
+        urlMatches: configuredUrl === webhookUrl,
+        pendingUpdates: Number.isInteger(info.pending_update_count) ? info.pending_update_count : 0,
+        hasLastError: Boolean(info.last_error_message)
+      },
+      agentId
+    };
+  } catch {
+    return { ok: false, code: 'telegram_unreachable', variables, ownerUidMatches: ownerUid === userUid };
+  }
+}
+
 async function services() {
   let { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -54,6 +95,7 @@ export default async function handler(req, res) {
     let user;
     try { user = await auth.verifyIdToken(token, true); }
     catch { return res.status(401).json({ error: 'Sesión inválida. Vuelve a iniciar sesión.' }); }
+    if (cmd.action === 'telegramStatus') return res.status(200).json(await telegramStatus(user.uid));
     const root = db.collection('users').doc(user.uid);
     const now = new Date();
     const stamp = FieldValue.serverTimestamp();

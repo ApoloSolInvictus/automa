@@ -41,6 +41,10 @@ test('validates agent runs and OpenAI-only agent configuration', () => {
  assert.throws(() => parseCommand({action:'saveEntity',collection:'agents',data:{name:'Other',model:'claude-3.5'}}));
  assert.throws(() => parseCommand({action:'saveEntity',collection:'agents',data:{name:'Paused',model:'gpt-5.6-sol',status:'Active'}}));
 });
+test('accepts the authenticated Telegram status action without a payload', () => {
+ const parsed = parseCommand({action:'telegramStatus'});
+ assert.deepEqual(parsed, {action:'telegramStatus'});
+});
 test('API validates body size and malformed commands before connecting to services', async () => {
  for (const [body,status] of [[{},400],[{padding:'x'.repeat(13000)},413]]) {
   const res={setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
