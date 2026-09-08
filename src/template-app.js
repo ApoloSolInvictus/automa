@@ -396,6 +396,10 @@ function updateDemoControls() {
     button.disabled = !canWrite;
     if (!canWrite && workspace.role === 'viewer') button.title = 'Viewer members have read-only access.';
   });
+  document.querySelectorAll('[data-global-reset]').forEach(button => {
+    button.disabled = !currentUser || workspace.role !== 'owner';
+    if (button.disabled) button.title = 'Only the Automa owner can reset every profile.';
+  });
 }
 async function runDemoAction(action) {
   if (!currentUser) return showCrmNotice('Demo data', 'Sign in before using the demo controls.');
