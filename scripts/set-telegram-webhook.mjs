@@ -1,3 +1,19 @@
+import { readFile } from 'node:fs/promises';
+
+async function loadLocalEnv() {
+  for (const filename of ['.env.local', '.env']) {
+    try {
+      const content = await readFile(filename, 'utf8');
+      for (const line of content.split(/\r?\n/)) {
+        const match = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*)\s*$/);
+        if (!match || process.env[match[1]]) continue;
+        process.env[match[1]] = match[2].replace(/^("|')(.*)\1$/, '$2');
+      }
+    } catch { /* local env file is optional */ }
+  }
+}
+
+await loadLocalEnv();
 const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
 const secret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
 const url = (process.env.TELEGRAM_WEBHOOK_URL || 'https://automa.wstudio3d.com/api/telegram').trim();

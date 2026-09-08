@@ -325,11 +325,14 @@ Marca `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como secretos. No los gua
 
 ### 6.2 Registrar el webhook
 
-Después de guardar las variables y desplegar, carga las mismas variables en un entorno local protegido y ejecuta:
+Después de guardar las variables y desplegar, puedes traerlas a un archivo local protegido y ejecutar el registro. `.env.local` está excluido de Git:
 
 ```sh
+npx --yes vercel env pull .env.local production
 npm run telegram:set-webhook
 ```
+
+También puedes exportar las cinco variables en tu terminal sin crear un archivo local. El script lee `.env.local` o `.env` automáticamente si existen.
 
 El script llama a `setWebhook` con `https://automa.wstudio3d.com/api/telegram`, limita los eventos a mensajes y configura `secret_token`. Telegram enviará ese secreto en el encabezado `X-Telegram-Bot-Api-Secret-Token`; la función rechaza cualquier solicitud sin coincidencia. Esta validación está contemplada por la documentación oficial de Telegram ([Bot API](https://core.telegram.org/bots/api)).
 
