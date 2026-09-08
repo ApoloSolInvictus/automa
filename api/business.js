@@ -1,10 +1,6 @@
 import { InputError, parseCommand, planFollowUp } from '../server/domain.js';
-import { createRequire } from 'node:module';
-
-const require = createRequire(import.meta.url);
-const firebaseAdminApp = require('firebase-admin/app');
-const firebaseAdminAuth = require('firebase-admin/auth');
-const firebaseAdminFirestore = require('firebase-admin/firestore');
+import firebaseAdmin from '../server/firebase-admin.cjs';
+const { firebaseAdminApp, firebaseAdminAuth, firebaseAdminFirestore } = firebaseAdmin;
 
 async function services() {
   let { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
