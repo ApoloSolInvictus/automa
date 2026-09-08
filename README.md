@@ -14,7 +14,7 @@ La plantilla visual original de NexusAI se conserva en [`demo.html`](demo.html),
 | --- | --- | --- |
 | Registro, login, recuperación y logout | Listo | Firebase Authentication con correo y contraseña |
 | Dashboard | Listo | Firestore en tiempo real, separado por UID |
-| CRM multiempresa | Listo | Compañías, contactos, oportunidades, actividades y pipeline por UID |
+| CRM multiempresa | Listo | Compañías, contactos, oportunidades, actividades y pipeline por espacio de trabajo |
 | Prospectos | Listo | Nombre, correo y valor estimado en USD |
 | Automatización | Listo | Crea una tarea de seguimiento con vencimiento configurable |
 | Historial | Listo | Registra si la tarea fue creada u omitida |
@@ -23,7 +23,7 @@ La plantilla visual original de NexusAI se conserva en [`demo.html`](demo.html),
 | Telegram | Preparado | `/api/telegram` recibe mensajes, ejecuta el agente y responde; requiere token y webhook |
 | WhatsApp, email, Slack y pagos | Pendiente | Requieren integraciones y credenciales adicionales |
 | Ejecución al vencer una tarea | Pendiente | La fecha se guarda; todavía no existe un cron que envíe mensajes |
-| Equipos y organizaciones | Pendiente | Esta versión tiene un espacio individual por usuario |
+| Equipos y organizaciones | Listo | Organizaciones aisladas, selector de espacio, invitaciones y roles Owner, Admin, Member y Viewer |
 
 La automatización no necesita Claude ni OpenAI para crear una tarea. El servidor aplica la regla y escribe en Firestore. El chat y el Copilot del CRM sí usan OpenAI solo desde funciones de servidor y con `OPENAI_API_KEY` configurada. Una IA se debe usar cuando el proceso necesite comprender lenguaje: clasificar un prospecto, resumir una conversación, extraer campos o preparar una respuesta. La IA propone o clasifica; el código mantiene los permisos, límites, reintentos, acciones y auditoría.
 
@@ -132,20 +132,42 @@ users/{uid}/companies/{companyId}
 users/{uid}/contacts/{contactId}
 users/{uid}/opportunities/{opportunityId}
 users/{uid}/activities/{activityId}
+users/{uid}/memberships/{organizationId}
+organizations/{organizationId}
+organizations/{organizationId}/members/{uid}
+organizations/{organizationId}/invitations/{invitationId}
+organizations/{organizationId}/agents/{agentId}
+organizations/{organizationId}/automations/{automationId}
+organizations/{organizationId}/integrations/{integrationId}
+organizations/{organizationId}/companies/{companyId}
+organizations/{organizationId}/contacts/{contactId}
+organizations/{organizationId}/opportunities/{opportunityId}
+organizations/{organizationId}/activities/{activityId}
 ```
 
 El servidor crea prospecto, tarea, historial y contador diario en una transacción. El mismo `requestId` evita duplicar un prospecto si el navegador reintenta. El límite actual es de 200 prospectos por cuenta y día UTC. El dashboard muestra como máximo los últimos 100 documentos por colección.
 
-### 2.6 CRM multiempresa
+### 2.6 CRM multiempresa y organizaciones
 
-En **Dashboard → CRM** cada cuenta autenticada obtiene un espacio aislado para administrar cualquier tipo de empresa. Puedes crear y editar:
+En **Dashboard → CRM** cada cuenta autenticada conserva un espacio personal. El selector de espacio de la barra superior permite crear organizaciones separadas para cada empresa, marca o unidad de negocio. Sus registros, agentes, automatizaciones e integraciones quedan aislados entre sí.
+
+El propietario puede invitar miembros desde **Workspaces → Invite member**. Las invitaciones a cuentas Firebase existentes se activan al instante; para un correo que todavía no tiene cuenta se guarda una invitación pendiente y se acepta automáticamente cuando esa persona inicia sesión con el mismo correo. Los roles son:
+
+- **Owner:** propietario de la organización y único rol que se crea al iniciar el espacio.
+- **Admin:** administra miembros y puede editar la operación del espacio.
+- **Member:** edita registros CRM, agentes, automatizaciones e integraciones.
+- **Viewer:** puede consultar el espacio y usar lecturas; las operaciones de escritura se rechazan.
+
+En el selector se muestra el rol, el número de miembros y el detalle de cada miembro. El espacio personal mantiene el comportamiento anterior para que los datos existentes sigan visibles.
+
+En cualquier espacio puedes crear y editar:
 
 - **Companies:** nombre, industria, tamaño, sitio web, propietario y estado.
 - **Contacts:** datos de contacto, cargo, compañía y estado.
 - **Opportunities:** pipeline `Lead → Qualified → Proposal → Won/Lost`, valor, probabilidad, próximo paso y fecha estimada.
 - **Activities:** llamadas, correos, reuniones, tareas y notas con vencimiento.
 
-El buscador y el filtro de etapa trabajan sobre los registros en tiempo real. **AI CRM Copilot** envía un resumen acotado de esos registros al agente OpenAI elegido para priorizar el día, resumir el pipeline o redactar un seguimiento. La respuesta se muestra para revisión; no envía mensajes ni modifica sistemas externos por sí sola. Los botones **Add Company**, **Add Contact**, **New Opportunity** y **Log Activity** guardan mediante `/api/business` después de validar la sesión y los campos permitidos.
+El buscador y el filtro de etapa trabajan sobre los registros en tiempo real. **AI CRM Copilot** envía un resumen acotado de esos registros al agente OpenAI elegido para priorizar el día, resumir el pipeline o redactar un seguimiento. La respuesta se muestra para revisión; no envía mensajes ni modifica sistemas externos por sí sola. Los botones **Add Company**, **Add Contact**, **New Opportunity** y **Log Activity** guardan mediante `/api/business` después de validar la sesión, el espacio seleccionado, el rol y los campos permitidos. La autorización de organización también se aplica a agentes, automatizaciones e integraciones.
 
 ## 3. Ejecutar localmente
 

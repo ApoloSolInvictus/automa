@@ -52,6 +52,19 @@ test('validates CRM records and bounded CRM copilot requests', () => {
  assert.equal(assist.task, 'summary'); assert.equal(assist.agentId, 'data-analyzer');
  assert.throws(() => parseCommand({ action:'crmAssist', task:'delete', context:'{}' }));
 });
+test('validates organization workspaces, roles and scoped records', () => {
+ const listed = parseCommand({ action:'organizationList' });
+ assert.deepEqual(listed, { action:'organizationList' });
+ const created = parseCommand({ action:'organizationCreate', name:' Acme Operations ' });
+ assert.equal(created.name, 'Acme Operations');
+ const invited = parseCommand({ action:'organizationInvite', orgId:'acme_ops', email:' TEAM@example.com ', role:'Admin' });
+ assert.deepEqual(invited, { action:'organizationInvite', orgId:'acme_ops', email:'team@example.com', role:'admin' });
+ const scoped = parseCommand({ action:'saveEntity', orgId:'acme_ops', collection:'companies', data:{ name:'Acme' } });
+ assert.equal(scoped.orgId, 'acme_ops');
+ assert.throws(() => parseCommand({ action:'organizationInvite', orgId:'../acme', email:'team@example.com', role:'member' }));
+ assert.throws(() => parseCommand({ action:'organizationInvite', orgId:'acme', email:'invalid', role:'member' }));
+ assert.throws(() => parseCommand({ action:'organizationInvite', orgId:'acme', email:'team@example.com', role:'owner' }));
+});
 test('accepts the authenticated Telegram status action without a payload', () => {
  const parsed = parseCommand({action:'telegramStatus'});
  assert.deepEqual(parsed, {action:'telegramStatus'});

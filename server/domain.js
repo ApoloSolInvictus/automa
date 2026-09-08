@@ -9,6 +9,12 @@ const CRM_FIELDS = Object.freeze({
   activities: ['type', 'subject', 'companyId', 'contactId', 'opportunityId', 'dueDate', 'status', 'notes']
 });
 const CRM_ASSIST_TASKS = ['prioritize', 'summary', 'followup'];
+const ORGANIZATION_ROLES = ['admin', 'member', 'viewer'];
+const organizationId = value => {
+  const id = text(value, 'Organización', 80);
+  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw new InputError('Organización inválida.');
+  return id;
+};
 export function isAllowedTelegramWebhookUrl(value) {
   if (typeof value !== 'string' || !value.trim()) return false;
   try {
@@ -58,7 +64,21 @@ export function parseCommand(body) {
     const context = text(body.context, 'Contexto CRM', 7000);
     const agentId = body.agentId == null ? null : text(body.agentId, 'Agente', 80);
     if (agentId && !/^[a-zA-Z0-9_-]{1,80}$/.test(agentId)) throw new InputError('Agente inválido.');
-    return { action: body.action, task, context, agentId };
+    const orgId = body.orgId == null ? null : organizationId(body.orgId);
+    return { action: body.action, task, context, agentId, orgId };
+  }
+  if (body.action === 'organizationList' || body.action === 'organizationAccept') return { action: body.action, ...(body.orgId == null ? {} : { orgId: organizationId(body.orgId) }) };
+  if (body.action === 'organizationCreate') {
+    const name = text(body.name, 'Nombre de organización', 120);
+    return { action: body.action, name };
+  }
+  if (body.action === 'organizationInvite') {
+    const orgId = organizationId(body.orgId);
+    const email = text(body.email, 'Correo', 254).toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new InputError('Correo inválido.');
+    const role = text(body.role || 'member', 'Rol', 20).toLowerCase();
+    if (!ORGANIZATION_ROLES.includes(role)) throw new InputError('Rol de organización inválido.');
+    return { action: body.action, orgId, email, role };
   }
   if (body.action === 'runAgent') {
     const agentId = text(body.agentId, 'Agente', 80);
@@ -70,13 +90,15 @@ export function parseCommand(body) {
       if (!item || !['user', 'assistant'].includes(item.role)) throw new InputError('Historial inválido.');
       return { role: item.role, content: text(item.content, 'Mensaje', 4000) };
     });
-    return { action: body.action, agentId, message, history };
+    const orgId = body.orgId == null ? null : organizationId(body.orgId);
+    return { action: body.action, agentId, message, history, orgId };
   }
   if (body.action === 'saveEntity') {
     const collection = text(body.collection, 'Colección', 40);
     if (!['agents', 'automations', 'integrations', ...CRM_COLLECTIONS].includes(collection)) throw new InputError('Colección inválida.');
     const id = body.id == null ? null : text(body.id, 'Identificador', 80);
     if (id && !/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw new InputError('Identificador inválido.');
+    const orgId = body.orgId == null ? null : organizationId(body.orgId);
     if (!body.data || typeof body.data !== 'object' || Array.isArray(body.data)) throw new InputError('Datos inválidos.');
     const data = {};
     for (const [key, value] of Object.entries(body.data)) {
@@ -108,7 +130,7 @@ export function parseCommand(body) {
       if (collection === 'activities' && data.type && !['call', 'email', 'meeting', 'task', 'note'].includes(data.type)) throw new InputError('Tipo de actividad inválido.');
     }
     if (collection === 'integrations' && data.provider?.toLowerCase() === 'telegram' && data.webhookUrl && !isAllowedTelegramWebhookUrl(data.webhookUrl)) throw new InputError('Webhook URL de Telegram inválida. Usa una URL HTTPS de Automa/Vercel que termine en /api/telegram.');
-    return { action: body.action, collection, id, data };
+    return { action: body.action, collection, id, orgId, data };
   }
   if (body.action === 'telegramStatus' || body.action === 'telegramRegister') return { action: body.action };
   if (body.action === 'saveProfile') {

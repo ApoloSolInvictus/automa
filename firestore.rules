@@ -1,6 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function organizationMember(orgId) {
+      return signedIn() && exists(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid));
+    }
+
+    match /organizations/{orgId} {
+      allow read: if organizationMember(orgId);
+      allow write: if false;
+      match /{collection}/{document} {
+        allow read: if organizationMember(orgId)
+          && collection in ['members', 'invitations', 'leads', 'tasks', 'runs', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities'];
+        allow write: if false;
+      }
+    }
+
     match /users/{uid}/{collection}/{document} {
       allow read: if request.auth != null && request.auth.uid == uid
         && collection in ['leads', 'tasks', 'runs', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities'];

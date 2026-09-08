@@ -16,6 +16,9 @@ const config = {
 };
 let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {};
 const crmState = { companies: [], contacts: [], opportunities: [], activities: [] };
+let currentUser = null;
+let workspace = { id: null, name: 'Personal workspace', role: 'owner', members: [], pendingInvites: [] };
+let workspaceOptions = [workspace];
 
 const $ = id => document.getElementById(id);
 function errorMessage(error) {
@@ -197,6 +200,7 @@ function resetCrmState() {
   Object.keys(crmState).forEach(key => { crmState[key] = []; });
   renderCrm();
 }
+function workspacePayload() { return workspace.id ? { orgId: workspace.id } : {}; }
 async function callBusiness(body) {
   const token = await auth.currentUser?.getIdToken(); if (!token) throw new Error('AUTH');
   const response = await fetch('/api/business', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
@@ -240,14 +244,14 @@ function agentFields(agent = {}) {
 }
 function openAgentEditor(agent = {}, id = null) {
   const seed = { ...(id ? getDefaultAgent(id) || {} : {}), ...agent };
-  return modal(id ? 'Configure Agent' : 'Deploy New Agent', agentFields(seed), data => callBusiness({ action: 'saveEntity', collection: 'agents', ...(id ? { id } : {}), data }));
+  return modal(id ? 'Configure Agent' : 'Deploy New Agent', agentFields(seed), data => callBusiness({ action: 'saveEntity', collection: 'agents', ...workspacePayload(), ...(id ? { id } : {}), data }));
 }
 function openAgentTest(agent = {}, id) {
   const seed = { ...(id ? getDefaultAgent(id) || {} : {}), ...agent };
   if (!id) return alert('Save this agent before running a test.');
   return modal(`Test ${seed.name || 'Agent'}`, [{ key: 'message', label: 'Test message', type: 'textarea', rows: 4, placeholder: 'Ask this agent to help with a business task.' }], async data => {
     if (!auth.currentUser) throw new Error('Your session expired. Please sign in again.');
-    const result = await callBusiness({ action: 'runAgent', agentId: id, message: data.message, history: [] });
+    const result = await callBusiness({ action: 'runAgent', ...workspacePayload(), agentId: id, message: data.message, history: [] });
     alert(`${result.agent || seed.name} · ${modelLabel(result.model || seed.model)}\n\n${result.reply || 'No response.'}`);
   });
 }
@@ -308,7 +312,7 @@ window.openAutomationBlueprint = function openAutomationBlueprint(key) {
     { key: 'trigger', label: 'Trigger', value: blueprint.trigger },
     { key: 'steps', label: 'Workflow steps', type: 'textarea', rows: 4, value: blueprint.steps },
     { key: 'status', label: 'Status', type: 'select', value: 'draft', options: [{ value: 'draft', label: 'Draft' }, { value: 'enabled', label: 'Enabled' }] }
-  ], data => callBusiness({ action: 'saveEntity', collection: 'automations', data: { ...data, blueprint: key } }));
+  ], data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection: 'automations', data: { ...data, blueprint: key } }));
 };
 function crmOptions(rows, value, label) {
   return [{ value: '', label: `No ${label}` }, ...rows.map(row => ({ value: row.id, label: label === 'company' || label === 'opportunity' ? row.name : `${row.firstName || ''} ${row.lastName || ''}`.trim() || 'Unnamed contact' }))].map(option => ({ ...option, selected: option.value === value }));
@@ -364,7 +368,7 @@ function showCrmNotice(title, message) {
 }
 function openCrmEditor(collection, id = null, seed = {}) {
   const label = crmKindLabels[collection] || 'CRM record';
-  return modal(id ? `Edit ${label}` : `Add ${label}`, crmFields(collection, seed), data => callBusiness({ action: 'saveEntity', collection, ...(id ? { id } : {}), data }));
+  return modal(id ? `Edit ${label}` : `Add ${label}`, crmFields(collection, seed), data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection, ...(id ? { id } : {}), data }));
 }
 async function runCrmAssist(task) {
   const button = document.querySelector(`[data-crm-ai="${task}"]`); if (button) button.disabled = true;
@@ -376,15 +380,87 @@ async function runCrmAssist(task) {
     activities: project(crmState.activities, ['type', 'subject', 'companyId', 'opportunityId', 'dueDate', 'status'])
   });
   try {
-    const result = await callBusiness({ action: 'crmAssist', task, context, agentId: $('crmAgentSelect')?.value || 'data-analyzer' });
+    const result = await callBusiness({ action: 'crmAssist', ...workspacePayload(), task, context, agentId: $('crmAgentSelect')?.value || 'data-analyzer' });
     showCrmNotice(`Automa CRM Copilot · ${modelLabel(result.model)}`, result.reply || 'No insight was returned.');
   } catch (error) { showCrmNotice('CRM Copilot', error.message || 'The CRM assistant could not complete the request.'); }
   finally { if (button) button.disabled = false; }
 }
+function updateWorkspaceUi() {
+  const name = $('workspaceName'); if (name) name.textContent = workspace.name || 'Personal workspace';
+  const role = $('workspaceRole'); if (role) role.textContent = (workspace.role || 'owner').replace(/^./, letter => letter.toUpperCase());
+}
+function stopSubscriptions() {
+  stops.forEach(stop => stop());
+  stops = [];
+}
+window.openOrganizationEditor = function openOrganizationEditor() {
+  return modal('Create organization', [
+    { type: 'note', value: 'Create a separate workspace for a company or business unit. Members, CRM records, agents and automations stay isolated from your personal workspace and other organizations.' },
+    { key: 'name', label: 'Organization name', placeholder: 'Acme Operations' }
+  ], async data => {
+    const result = await callBusiness({ action: 'organizationCreate', name: data.name });
+    await loadWorkspaces(currentUser, result.organization?.id);
+  });
+};
+window.openOrganizationInvite = function openOrganizationInvite() {
+  if (!workspace.id || !['owner', 'admin'].includes(workspace.role)) return showCrmNotice('Organization access', 'Create or select an organization where you are an Owner or Admin before inviting members.');
+  return modal(`Invite to ${workspace.name}`, [
+    { type: 'note', value: 'Existing Firebase users are added immediately. New email addresses receive a pending invitation record and can join after signing in with that email.' },
+    { key: 'email', label: 'Member email', type: 'email', placeholder: 'teammate@company.com' },
+    { key: 'role', label: 'Role', type: 'select', value: 'member', options: [{ value: 'admin', label: 'Admin — manage members and workspace' }, { value: 'member', label: 'Member — edit business records' }, { value: 'viewer', label: 'Viewer — read-only access' }] }
+  ], async data => {
+    await callBusiness({ action: 'organizationInvite', orgId: workspace.id, email: data.email, role: data.role });
+    await loadWorkspaces(currentUser, workspace.id);
+  });
+};
+window.openWorkspaceManager = function openWorkspaceManager() {
+  if (!currentUser) return;
+  const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#0009;z-index:3000;display:grid;place-items:center;padding:20px';
+  const box = document.createElement('div'); box.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:24px;width:min(560px,100%);max-height:82vh;overflow:auto';
+  const render = () => {
+    box.replaceChildren();
+    const title = document.createElement('h4'); title.style.marginBottom = '6px'; title.textContent = 'Workspaces';
+    const intro = document.createElement('p'); intro.style.cssText = 'font-size:.8rem;color:var(--tx3);margin-bottom:18px'; intro.textContent = 'Switch between your personal workspace and organizations shared with your team.';
+    box.append(title, intro);
+    const list = document.createElement('div'); list.className = 'd-grid gap-2';
+    workspaceOptions.forEach(option => {
+      const row = document.createElement('div'); row.className = 'workspace-option';
+      const info = document.createElement('div'); info.style.minWidth = '0';
+      const name = document.createElement('strong'); name.textContent = option.name; const meta = document.createElement('small'); meta.textContent = `${option.role === 'owner' ? 'Owner' : option.role} · ${option.members?.length || 1} member${option.members?.length === 1 ? '' : 's'}`; info.append(name, meta);
+      const select = document.createElement('button'); select.className = option.id === workspace.id ? 'bgrd btn py-1 px-2' : 'boc btn py-1 px-2'; select.style.fontSize = '.72rem'; select.textContent = option.id === workspace.id ? 'Current' : 'Open'; select.disabled = option.id === workspace.id; select.addEventListener('click', async () => { workspace = option; updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(currentUser); wrap.remove(); }); row.append(info, select); list.append(row);
+    });
+    box.append(list);
+    const selected = document.createElement('div'); selected.className = 'workspace-selected mt-3'; selected.innerHTML = `<strong>${escapeHtml(workspace.name)}</strong><span>${escapeHtml(workspace.members?.length ? `${workspace.members.length} member${workspace.members.length === 1 ? '' : 's'} · ${workspace.pendingInvites?.length || 0} pending invitations` : 'Personal workspace data')}</span>`; box.append(selected);
+    if (workspace.id && workspace.members?.length) {
+      const members = document.createElement('div'); members.className = 'workspace-members mt-3';
+      workspace.members.slice(0, 20).forEach(member => {
+        const row = document.createElement('div'); row.className = 'workspace-member';
+        const identity = document.createElement('span'); identity.textContent = member.displayName || member.email || member.id;
+        const details = document.createElement('small'); details.textContent = `${member.email || ''}${member.email && member.role ? ' · ' : ''}${member.role || 'member'}`;
+        row.append(identity, details); members.append(row);
+      });
+      box.append(members);
+    }
+    const actions = document.createElement('div'); actions.className = 'd-flex gap-2 justify-content-end mt-4 flex-wrap';
+    const invite = document.createElement('button'); invite.className = 'boc btn'; invite.textContent = 'Invite member'; invite.disabled = !workspace.id || !['owner', 'admin'].includes(workspace.role); invite.addEventListener('click', () => { wrap.remove(); window.openOrganizationInvite(); });
+    const create = document.createElement('button'); create.className = 'bgrd btn'; create.textContent = 'Create organization'; create.addEventListener('click', () => { wrap.remove(); window.openOrganizationEditor(); });
+    const close = document.createElement('button'); close.className = 'boc btn'; close.textContent = 'Close'; close.addEventListener('click', () => wrap.remove()); actions.append(invite, create, close); box.append(actions);
+  };
+  render(); wrap.append(box); document.body.append(wrap);
+};
+async function loadWorkspaces(user, requestedId = null) {
+  if (!user) return;
+  try { await callBusiness({ action: 'organizationAccept' }); } catch (error) { console.warn('Organization invitations unavailable', error.message); }
+  let organizations = [];
+  try { const result = await callBusiness({ action: 'organizationList' }); organizations = result.organizations || []; } catch (error) { console.warn('Organizations unavailable', error.message); }
+  workspaceOptions = [{ id: null, name: 'Personal workspace', role: 'owner', members: [], pendingInvites: [] }, ...organizations];
+  workspace = workspaceOptions.find(option => option.id === requestedId) || workspaceOptions.find(option => option.id === workspace.id) || workspaceOptions[0];
+  updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(user);
+}
 function wireWorkspace() {
   if (workspaceWired) return; workspaceWired = true;
   const section = id => document.querySelector(`#sec-${id}`);
-  const add = (id, label, fields, collection) => { const btn = [...(section(id)?.querySelectorAll('button') || [])].find(b => b.textContent.includes(label)); btn?.addEventListener('click', () => modal(label, fields, data => callBusiness({ action: 'saveEntity', collection, data }))); };
+  const add = (id, label, fields, collection) => { const btn = [...(section(id)?.querySelectorAll('button') || [])].find(b => b.textContent.includes(label)); btn?.addEventListener('click', () => modal(label, fields, data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection, data }))); };
   const deploy = [...(section('agents')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Deploy New Agent')); deploy?.addEventListener('click', () => openAgentEditor());
   add('automations', 'Create Automation', [{ key: 'name', label: 'Automation name', placeholder: 'Lead follow-up' }, { key: 'trigger', label: 'Trigger', placeholder: 'New lead' }], 'automations');
   document.querySelectorAll('[data-use-blueprint]').forEach(button => button.addEventListener('click', () => window.openAutomationBlueprint(button.dataset.useBlueprint)));
@@ -402,10 +478,10 @@ function wireWorkspace() {
     if (!btn.textContent.includes('Configure')) return;
     const card = btn.closest('[data-integration-id]');
     if (card?.dataset.integrationId === 'telegram') {
-      btn.addEventListener('click', () => modal('Configure Telegram', telegramFields(telegramIntegration), data => callBusiness({ action: 'saveEntity', collection: 'integrations', id: 'telegram', data: { ...data, provider: 'telegram' } })));
+      btn.addEventListener('click', () => modal('Configure Telegram', telegramFields(telegramIntegration), data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection: 'integrations', id: 'telegram', data: { ...data, provider: 'telegram' } })));
       return;
     }
-    btn.addEventListener('click', () => modal('Configure Integration', [{ key: 'status', label: 'Status', value: 'Connected' }, { key: 'notes', label: 'Notes' }], data => callBusiness({ action: 'saveEntity', collection: 'integrations', data })));
+    btn.addEventListener('click', () => modal('Configure Integration', [{ key: 'status', label: 'Status', value: 'Connected' }, { key: 'notes', label: 'Notes' }], data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection: 'integrations', data })));
   });
   const telegramStatusButton = section('integrations')?.querySelector('[data-telegram-status]');
   telegramStatusButton?.addEventListener('click', async () => {
@@ -432,7 +508,11 @@ function wireWorkspace() {
 function subscribe(user) {
   const run = ++generation;
   resetStats();
-  const watch = (name, callback) => { const stop = onSnapshot(query(collection(db, 'users', user.uid, name), orderBy('createdAt', 'desc'), limit(100)), snap => { if (generation !== run) return; const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); updateStats(name, rows); callback(rows); }, error => { if (generation === run) console.warn(`${name} unavailable`, error.code); }); stops.push(stop); };
+  const watch = (name, callback) => {
+    const source = workspace.id ? collection(db, 'organizations', workspace.id, name) : collection(db, 'users', user.uid, name);
+    const stop = onSnapshot(query(source, orderBy('createdAt', 'desc'), limit(100)), snap => { if (generation !== run) return; const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); updateStats(name, rows); callback(rows); }, error => { if (generation === run) console.warn(`${name} unavailable`, error.code); });
+    stops.push(stop);
+  };
   watch('leads', rows => renderActivity(rows)); watch('tasks', rows => renderActivity(rows)); watch('runs', rows => renderActivity(rows));
   watch('agents', rows => renderEntities('agents', rows)); watch('automations', rows => renderEntities('automations', rows)); watch('integrations', rows => renderEntities('integrations', rows));
   watch('companies', rows => { crmState.companies = rows; renderCrm(); }); watch('contacts', rows => { crmState.contacts = rows; renderCrm(); }); watch('opportunities', rows => { crmState.opportunities = rows; renderCrm(); }); watch('activities', rows => { crmState.activities = rows; renderCrm(); });
@@ -441,7 +521,7 @@ function subscribe(user) {
 
 if (Object.values(config).every(Boolean)) {
   const app = initializeApp(config); auth = getAuth(app); db = getFirestore(app);
-  onAuthStateChanged(auth, user => { stops.forEach(stop => stop()); stops = []; telegramIntegration = {}; resetCrmState(); if (user) { window.loginSuccess?.(userShape(user)); subscribe(user); } else { generation++; document.querySelector('#dashboard')?.style.setProperty('display', 'none'); document.querySelector('#landing')?.style.setProperty('display', 'block'); } });
+  onAuthStateChanged(auth, user => { stopSubscriptions(); telegramIntegration = {}; resetCrmState(); currentUser = user; if (user) { window.loginSuccess?.(userShape(user)); loadWorkspaces(user); } else { generation++; workspace = { id: null, name: 'Personal workspace', role: 'owner', members: [], pendingInvites: [] }; workspaceOptions = [workspace]; updateWorkspaceUi(); document.querySelector('#dashboard')?.style.setProperty('display', 'none'); document.querySelector('#landing')?.style.setProperty('display', 'block'); } });
   const forgot = document.querySelector('#fLogin a[href="#"]');
   forgot?.addEventListener('click', async event => { event.preventDefault(); const email = $('loginEmail')?.value.trim(); if (!email) return showError('login', 'Enter your email first.'); try { await sendPasswordResetEmail(auth, email); showError('login', 'If that account exists, a reset email has been sent.'); } catch (error) { showError('login', errorMessage(error)); } });
 } else {

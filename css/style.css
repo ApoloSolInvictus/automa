@@ -1101,6 +1101,105 @@ a {
   color: var(--tx3);
   font-size: 0.85rem;
 }
+.workspace-switcher {
+  padding: 5px 9px 5px 6px;
+  border-radius: 11px;
+  white-space: nowrap;
+}
+.workspace-switcher > span:not(.workspace-switcher-icon) {
+  font: 600 0.72rem "Space Grotesk", sans-serif;
+  line-height: 1.1;
+}
+.workspace-switcher small {
+  color: var(--tx3);
+  font-size: 0.62rem;
+  font-weight: 500;
+  margin-top: 2px;
+}
+.workspace-switcher-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  font-size: 0.78rem;
+}
+.workspace-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--bd);
+  border-radius: 11px;
+  background: var(--sf);
+}
+.workspace-option strong,
+.workspace-option small,
+.workspace-member span,
+.workspace-member small {
+  display: block;
+}
+.workspace-option strong {
+  color: var(--tx);
+  font-size: 0.82rem;
+}
+.workspace-option small,
+.workspace-member small {
+  color: var(--tx3);
+  font-size: 0.68rem;
+  margin-top: 3px;
+}
+.workspace-selected {
+  padding: 12px;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 11px;
+  background: rgba(139, 92, 246, 0.08);
+}
+.workspace-selected strong,
+.workspace-selected span {
+  display: block;
+}
+.workspace-selected strong {
+  color: var(--tx);
+  font-size: 0.82rem;
+}
+.workspace-selected span {
+  color: var(--tx3);
+  font-size: 0.72rem;
+  margin-top: 3px;
+}
+.workspace-members {
+  display: grid;
+  gap: 6px;
+  max-height: 170px;
+  overflow: auto;
+}
+.workspace-member {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--bd);
+}
+.workspace-member:last-child {
+  border-bottom: 0;
+}
+.workspace-member span {
+  color: var(--tx2);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-member small {
+  flex-shrink: 0;
+  margin-top: 0;
+}
 .db-user-pill {
   display: flex;
   align-items: center;

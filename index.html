@@ -652,6 +652,11 @@
             <button class="boc d-lg-none me-2 px-2 py-2" style="border-radius:10px;width:38px;height:38px" onclick="document.getElementById('dbSidebar').classList.toggle('mob-open')">
             <i class="fa-solid fa-bars"></i>
             </button>
+            <button class="workspace-switcher boc d-flex align-items-center gap-2" id="workspaceBtn" onclick="openWorkspaceManager()" title="Switch workspace">
+               <span class="workspace-switcher-icon"><i class="fa-solid fa-building-user"></i></span>
+               <span class="d-none d-md-flex flex-column align-items-start"><span id="workspaceName">Personal workspace</span><small id="workspaceRole">Owner</small></span>
+               <i class="fa-solid fa-chevron-down fa-xs ms-1" style="color:var(--tx3)"></i>
+            </button>
             <div class="db-top-search">
                <i class="fa-solid fa-magnifying-glass"></i>
                <input type="text" placeholder="Search Automa agents and workflows...">

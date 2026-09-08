@@ -106,6 +106,82 @@ async function services() {
   catch (error) { throw Object.assign(new Error('FIREBASE_ADMIN_CREDENTIALS'), { code: 'firebase_admin_credentials', cause: error }); }
   return { auth: getAuth(adminApp), db: getFirestore(adminApp), FieldValue };
 }
+async function organizationAccess(db, orgId, uid) {
+  const snapshot = await db.collection('organizations').doc(orgId).collection('members').doc(uid).get();
+  return snapshot.exists ? snapshot.data() || {} : null;
+}
+async function organizationList(db, uid) {
+  const memberships = await db.collection('users').doc(uid).collection('memberships').get();
+  const organizations = await Promise.all(memberships.docs.map(async membership => {
+    const organizationRef = db.collection('organizations').doc(membership.id);
+    const organization = await organizationRef.get();
+    if (!organization.exists) return null;
+    const [members, invitations] = await Promise.all([
+      organizationRef.collection('members').get(),
+      organizationRef.collection('invitations').where('status', '==', 'pending').get()
+    ]);
+    return {
+      id: organization.id,
+      name: organization.data()?.name || 'Organization',
+      role: membership.data()?.role || 'member',
+      members: members.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+      pendingInvites: invitations.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    };
+  }));
+  return organizations.filter(Boolean);
+}
+async function createOrganization(db, FieldValue, uid, user, name) {
+  const organizationRef = db.collection('organizations').doc();
+  const memberRef = organizationRef.collection('members').doc(uid);
+  const membershipRef = db.collection('users').doc(uid).collection('memberships').doc(organizationRef.id);
+  const stamp = FieldValue.serverTimestamp();
+  const batch = db.batch();
+  batch.set(organizationRef, { name, ownerUid: uid, createdAt: stamp, updatedAt: stamp });
+  batch.set(memberRef, { email: user.email || '', displayName: user.name || user.email?.split('@')[0] || 'Owner', role: 'owner', status: 'active', createdAt: stamp, updatedAt: stamp });
+  batch.set(membershipRef, { organizationId: organizationRef.id, name, role: 'owner', createdAt: stamp, updatedAt: stamp });
+  await batch.commit();
+  return { id: organizationRef.id, name, role: 'owner', members: [{ id: uid, email: user.email || '', displayName: user.name || 'Owner', role: 'owner', status: 'active' }], pendingInvites: [] };
+}
+async function inviteToOrganization(db, auth, FieldValue, uid, command) {
+  const access = await organizationAccess(db, command.orgId, uid);
+  if (!access || !['owner', 'admin'].includes(access.role)) return { status: 403, body: { error: 'Only an organization owner or admin can invite members.', code: 'organization_forbidden' } };
+  const organizationRef = db.collection('organizations').doc(command.orgId);
+  const stamp = FieldValue.serverTimestamp();
+  let invitee = null;
+  try { invitee = await auth.getUserByEmail(command.email); } catch (error) { if (error?.code !== 'auth/user-not-found') throw error; }
+  const batch = db.batch();
+  if (invitee) {
+    batch.set(organizationRef.collection('members').doc(invitee.uid), { email: invitee.email || command.email, displayName: invitee.displayName || command.email.split('@')[0], role: command.role, status: 'active', invitedBy: uid, createdAt: stamp, updatedAt: stamp }, { merge: true });
+    batch.set(db.collection('users').doc(invitee.uid).collection('memberships').doc(command.orgId), { organizationId: command.orgId, role: command.role, updatedAt: stamp, createdAt: stamp }, { merge: true });
+    await batch.commit();
+    return { status: 200, body: { ok: true, code: 'organization_member_added', email: command.email, role: command.role } };
+  }
+  const invitationRef = organizationRef.collection('invitations').doc();
+  batch.set(invitationRef, { email: command.email, role: command.role, status: 'pending', invitedBy: uid, createdAt: stamp, updatedAt: stamp });
+  await batch.commit();
+  return { status: 200, body: { ok: true, code: 'organization_invitation_created', email: command.email, role: command.role } };
+}
+async function acceptOrganizationInvitations(db, FieldValue, uid, email, requestedOrgId = null) {
+  const invitations = requestedOrgId
+    ? await db.collection('organizations').doc(requestedOrgId).collection('invitations').where('email', '==', email).get()
+    : await db.collectionGroup('invitations').where('email', '==', email).get();
+  const pending = invitations.docs.filter(doc => doc.data()?.status === 'pending');
+  const batch = db.batch();
+  const accepted = [];
+  for (const invitation of pending) {
+    const orgRef = invitation.ref.parent.parent;
+    if (!orgRef) continue;
+    const org = await orgRef.get();
+    if (!org.exists) continue;
+    const role = invitation.data()?.role || 'member';
+    batch.set(orgRef.collection('members').doc(uid), { email, displayName: email.split('@')[0], role, status: 'active', createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    batch.set(db.collection('users').doc(uid).collection('memberships').doc(org.id), { organizationId: org.id, name: org.data()?.name || 'Organization', role, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    batch.update(invitation.ref, { status: 'accepted', acceptedBy: uid, acceptedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    accepted.push({ id: org.id, name: org.data()?.name || 'Organization', role });
+  }
+  if (accepted.length) await batch.commit();
+  return accepted;
+}
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return res.status(405).json({ error: 'Usa POST.' }); }
@@ -133,9 +209,17 @@ export default async function handler(req, res) {
     let user;
     try { user = await auth.verifyIdToken(token, true); }
     catch { return res.status(401).json({ error: 'Sesión inválida. Vuelve a iniciar sesión.' }); }
+    if (cmd.action === 'organizationList') return res.status(200).json({ ok: true, organizations: await organizationList(db, user.uid) });
+    if (cmd.action === 'organizationCreate') return res.status(201).json({ ok: true, organization: await createOrganization(db, FieldValue, user.uid, user, cmd.name) });
+    if (cmd.action === 'organizationInvite') {
+      const result = await inviteToOrganization(db, auth, FieldValue, user.uid, cmd);
+      return res.status(result.status).json(result.body);
+    }
+    if (cmd.action === 'organizationAccept') return res.status(200).json({ ok: true, organizations: await acceptOrganizationInvitations(db, FieldValue, user.uid, user.email || '', cmd.orgId || null) });
     if (cmd.action === 'crmAssist') {
       const requestedAgentId = cmd.agentId || 'data-analyzer';
-      const root = db.collection('users').doc(user.uid);
+      const root = cmd.orgId ? db.collection('organizations').doc(cmd.orgId) : db.collection('users').doc(user.uid);
+      if (cmd.orgId && !(await organizationAccess(db, cmd.orgId, user.uid))) return res.status(403).json({ error: 'You are not a member of this organization.', code: 'organization_forbidden' });
       const snapshot = await root.collection('agents').doc(requestedAgentId).get();
       const saved = snapshot.exists ? snapshot.data() : null;
       const agent = { ...(getDefaultAgent(requestedAgentId) || getDefaultAgent('data-analyzer')), ...(saved || {}) };
@@ -162,7 +246,10 @@ export default async function handler(req, res) {
       const result = await registerTelegramWebhook(db, user.uid);
       return res.status(result.ok ? 200 : result.code === 'telegram_owner_mismatch' ? 409 : 503).json(result);
     }
-    const root = db.collection('users').doc(user.uid);
+    const root = cmd.orgId ? db.collection('organizations').doc(cmd.orgId) : db.collection('users').doc(user.uid);
+    const membership = cmd.orgId ? await organizationAccess(db, cmd.orgId, user.uid) : null;
+    if (cmd.orgId && !membership) return res.status(403).json({ error: 'You are not a member of this organization.', code: 'organization_forbidden' });
+    if (cmd.orgId && membership.role === 'viewer' && ['saveEntity', 'saveSettings', 'updateTask', 'createLead'].includes(cmd.action)) return res.status(403).json({ error: 'Viewer members have read-only access.', code: 'organization_read_only' });
     const now = new Date();
     const stamp = FieldValue.serverTimestamp();
     if (cmd.action === 'saveSettings') {
