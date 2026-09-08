@@ -6,7 +6,8 @@ export function isAllowedTelegramWebhookUrl(value) {
   try {
     const url = new URL(value.trim());
     const hostname = url.hostname.toLowerCase();
-    return url.protocol === 'https:' && url.pathname === '/api/telegram' && !url.search && !url.hash && (hostname === 'automa.wstudio3d.com' || hostname.endsWith('.vercel.app'));
+    const isAutomaVercel = hostname === 'automa.vercel.app' || /^automa-[a-z0-9]+-ronny-woods-projects\.vercel\.app$/.test(hostname);
+    return url.protocol === 'https:' && url.pathname === '/api/telegram' && !url.search && !url.hash && (hostname === 'automa.wstudio3d.com' || isAutomaVercel);
   } catch { return false; }
 }
 function text(value, label, max) {

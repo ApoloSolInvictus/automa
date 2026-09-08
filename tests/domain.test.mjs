@@ -49,9 +49,10 @@ test('accepts the authenticated Telegram status action without a payload', () =>
 });
 test('only accepts secure Automa or Vercel Telegram webhook URLs', () => {
  assert.equal(isAllowedTelegramWebhookUrl('https://automa.wstudio3d.com/api/telegram'), true);
- assert.equal(isAllowedTelegramWebhookUrl('https://automa-example.vercel.app/api/telegram'), true);
+ assert.equal(isAllowedTelegramWebhookUrl('https://automa-bqi32f8no-ronny-woods-projects.vercel.app/api/telegram'), true);
  assert.equal(isAllowedTelegramWebhookUrl('http://automa.wstudio3d.com/api/telegram'), false);
  assert.equal(isAllowedTelegramWebhookUrl('https://example.com/api/telegram'), false);
+ assert.equal(isAllowedTelegramWebhookUrl('https://attacker.vercel.app/api/telegram'), false);
  assert.equal(isAllowedTelegramWebhookUrl('https://automa.wstudio3d.com/api/telegram?x=1'), false);
 });
 test('API validates body size and malformed commands before connecting to services', async () => {
