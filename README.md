@@ -154,7 +154,7 @@ En **Dashboard → CRM** cada cuenta autenticada conserva un espacio personal. E
 El propietario puede invitar miembros desde **Workspaces → Invite member**. Las invitaciones a cuentas Firebase existentes se activan al instante; para un correo que todavía no tiene cuenta se guarda una invitación pendiente y se acepta automáticamente cuando esa persona inicia sesión con el mismo correo. Los roles son:
 
 - **Owner:** propietario de la organización y único rol que se crea al iniciar el espacio.
-- **Admin:** administra miembros y puede editar la operación del espacio.
+- **Admin:** puede invitar miembros y editar la operación del espacio.
 - **Member:** edita registros CRM, agentes, automatizaciones e integraciones.
 - **Viewer:** puede consultar el espacio y usar lecturas; las operaciones de escritura se rechazan.
 
