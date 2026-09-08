@@ -68,6 +68,9 @@ test('validates organization workspaces, roles and scoped records', () => {
 test('keeps demo controls scoped and bounded', () => {
  assert.deepEqual(parseCommand({ action:'seedDemo', orgId:'acme_ops' }), { action:'seedDemo', orgId:'acme_ops' });
  assert.deepEqual(parseCommand({ action:'clearDemo' }), { action:'clearDemo', orgId:null });
+ assert.deepEqual(parseCommand({ action:'clearWorkspace', orgId:'acme_ops' }), { action:'clearWorkspace', orgId:'acme_ops' });
+ assert.deepEqual(parseCommand({ action:'clearAllProfiles', confirmation:'DELETE_ALL_AUTOMA_DATA' }), { action:'clearAllProfiles', confirmation:'DELETE_ALL_AUTOMA_DATA' });
+ assert.throws(() => parseCommand({ action:'clearAllProfiles', confirmation:'delete' }));
  assert.throws(() => parseCommand({ action:'clearDemo', orgId:'../all' }));
 });
 test('accepts the authenticated Telegram status action without a payload', () => {

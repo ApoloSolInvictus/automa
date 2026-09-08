@@ -72,9 +72,13 @@ export function parseCommand(body) {
     const name = text(body.name, 'Nombre de organización', 120);
     return { action: body.action, name };
   }
-  if (body.action === 'seedDemo' || body.action === 'clearDemo') {
+  if (body.action === 'seedDemo' || body.action === 'clearDemo' || body.action === 'clearWorkspace') {
     const orgId = body.orgId == null ? null : organizationId(body.orgId);
     return { action: body.action, orgId };
+  }
+  if (body.action === 'clearAllProfiles') {
+    if (body.confirmation !== 'DELETE_ALL_AUTOMA_DATA') throw new InputError('Escribe DELETE_ALL_AUTOMA_DATA para confirmar el restablecimiento global.');
+    return { action: body.action, confirmation: body.confirmation };
   }
   if (body.action === 'organizationInvite') {
     const orgId = organizationId(body.orgId);

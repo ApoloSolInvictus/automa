@@ -230,6 +230,26 @@ async function clearDemoData(db, root) {
   }
   return references.length;
 }
+const WORKSPACE_DATA_COLLECTIONS = ['leads', 'tasks', 'runs', 'internal', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities'];
+async function clearWorkspaceData(db, root) {
+  const references = [];
+  for (const collection of WORKSPACE_DATA_COLLECTIONS) {
+    const snapshot = await root.collection(collection).get();
+    snapshot.docs.forEach(doc => references.push(doc.ref));
+  }
+  for (let index = 0; index < references.length; index += 400) {
+    const batch = db.batch();
+    references.slice(index, index + 400).forEach(reference => batch.delete(reference));
+    await batch.commit();
+  }
+  return references.length;
+}
+async function clearAllProfilesData(db) {
+  const roots = [...await db.collection('users').listDocuments(), ...await db.collection('organizations').listDocuments()];
+  let count = 0;
+  for (const root of roots) count += await clearWorkspaceData(db, root);
+  return { profiles: roots.length, count };
+}
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return res.status(405).json({ error: 'Usa POST.' }); }
@@ -264,13 +284,19 @@ export default async function handler(req, res) {
       return res.status(result.status).json(result.body);
     }
     if (cmd.action === 'organizationAccept') return res.status(200).json({ ok: true, organizations: await acceptOrganizationInvitations(db, FieldValue, user.uid, user.email || '', cmd.orgId || null) });
-    if (cmd.action === 'seedDemo' || cmd.action === 'clearDemo') {
+    if (cmd.action === 'seedDemo' || cmd.action === 'clearDemo' || cmd.action === 'clearWorkspace') {
       const root = cmd.orgId ? db.collection('organizations').doc(cmd.orgId) : db.collection('users').doc(user.uid);
       const membership = cmd.orgId ? await organizationAccess(db, cmd.orgId, user.uid) : null;
       if (cmd.orgId && !membership) return res.status(403).json({ error: 'You are not a member of this organization.', code: 'organization_forbidden' });
       if (cmd.orgId && membership.role === 'viewer') return res.status(403).json({ error: 'Viewer members have read-only access.', code: 'organization_read_only' });
-      const count = cmd.action === 'seedDemo' ? await seedDemoData(db, FieldValue, root) : await clearDemoData(db, root);
+      const count = cmd.action === 'seedDemo' ? await seedDemoData(db, FieldValue, root) : cmd.action === 'clearWorkspace' ? await clearWorkspaceData(db, root) : await clearDemoData(db, root);
       return res.status(200).json({ ok: true, action: cmd.action, count });
+    }
+    if (cmd.action === 'clearAllProfiles') {
+      const ownerUid = cleanEnv(process.env.AUTOMA_DATA_RESET_OWNER_UID || process.env.TELEGRAM_OWNER_UID);
+      if (!ownerUid || ownerUid !== user.uid) return res.status(403).json({ error: 'Global reset is restricted to the configured Automa owner.', code: 'global_reset_forbidden' });
+      const result = await clearAllProfilesData(db);
+      return res.status(200).json({ ok: true, action: cmd.action, ...result });
     }
     if (cmd.action === 'crmAssist') {
       const requestedAgentId = cmd.agentId || 'data-analyzer';

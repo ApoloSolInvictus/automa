@@ -400,20 +400,31 @@ function updateDemoControls() {
 async function runDemoAction(action) {
   if (!currentUser) return showCrmNotice('Demo data', 'Sign in before using the demo controls.');
   if (workspace.role === 'viewer') return showCrmNotice('Demo data', 'Viewer members have read-only access. Ask an Owner or Admin to manage demo data.');
-  if (action === 'clearDemo' && !window.confirm('Delete only the reversible demo records from this workspace?')) return;
+  if (action === 'clearWorkspace' && !window.confirm(`Delete all Automa business data from ${workspace.name}? This removes CRM, agents, automations, integrations, leads, tasks and settings, but keeps authentication and organization membership.`)) return;
   const button = document.querySelector(action === 'seedDemo' ? '[data-demo-create]' : '[data-demo-clear]');
   if (button) button.disabled = true;
   try {
     const result = await callBusiness({ action, ...workspacePayload() });
     const message = action === 'seedDemo'
       ? `${result.count || 0} sample records were added to ${workspace.name}. Open CRM, AI Agents and Automations to explore them.`
-      : `${result.count || 0} demo records were removed from ${workspace.name}. Real records were left untouched.`;
-    showCrmNotice(action === 'seedDemo' ? 'Demo created' : 'Local demo data cleared', message);
+      : `${result.count || 0} business records were removed from ${workspace.name}. Authentication and organization membership were preserved.`;
+    showCrmNotice(action === 'seedDemo' ? 'Demo created' : 'Workspace reset', message);
   } catch (error) { showCrmNotice('Demo data', error.message || 'The demo action could not be completed.'); }
   finally { updateDemoControls(); }
 }
 window.createDemoData = () => runDemoAction('seedDemo');
-window.clearDemoData = () => runDemoAction('clearDemo');
+window.clearDemoData = () => runDemoAction('clearWorkspace');
+window.openGlobalReset = function openGlobalReset() {
+  if (!currentUser) return showCrmNotice('Global reset', 'Sign in before using the global reset.');
+  return modal('Borrar todos los perfiles', [
+    { type: 'note', value: 'This permanently removes business data from every Automa user profile and organization: CRM, agents, automations, integrations, leads, tasks, history and settings. Firebase Authentication accounts and organization memberships are preserved. This action cannot be undone.' },
+    { key: 'confirmation', label: 'Type DELETE_ALL_AUTOMA_DATA to confirm', placeholder: 'DELETE_ALL_AUTOMA_DATA' }
+  ], async data => {
+    const result = await callBusiness({ action: 'clearAllProfiles', confirmation: data.confirmation });
+    showCrmNotice('Global reset complete', `${result.count || 0} records were removed from ${result.profiles || 0} profiles and organizations. Authentication accounts and memberships were preserved.`);
+    await loadWorkspaces(currentUser, workspace.id);
+  });
+};
 function stopSubscriptions() {
   stops.forEach(stop => stop());
   stops = [];
@@ -469,7 +480,8 @@ window.openWorkspaceManager = function openWorkspaceManager() {
     const actions = document.createElement('div'); actions.className = 'd-flex gap-2 justify-content-end mt-4 flex-wrap';
     const invite = document.createElement('button'); invite.className = 'boc btn'; invite.textContent = 'Invite member'; invite.disabled = !workspace.id || !['owner', 'admin'].includes(workspace.role); invite.addEventListener('click', () => { wrap.remove(); window.openOrganizationInvite(); });
     const create = document.createElement('button'); create.className = 'bgrd btn'; create.textContent = 'Create organization'; create.addEventListener('click', () => { wrap.remove(); window.openOrganizationEditor(); });
-    const close = document.createElement('button'); close.className = 'boc btn'; close.textContent = 'Close'; close.addEventListener('click', () => wrap.remove()); actions.append(invite, create, close); box.append(actions);
+    const globalReset = document.createElement('button'); globalReset.className = 'boc btn'; globalReset.style.color = '#f87171'; globalReset.textContent = 'Borrar todos los perfiles'; globalReset.disabled = workspace.role !== 'owner'; globalReset.addEventListener('click', () => { wrap.remove(); window.openGlobalReset(); });
+    const close = document.createElement('button'); close.className = 'boc btn'; close.textContent = 'Close'; close.addEventListener('click', () => wrap.remove()); actions.append(invite, create, globalReset, close); box.append(actions);
   };
   render(); wrap.append(box); document.body.append(wrap);
 };

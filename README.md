@@ -24,7 +24,7 @@ La plantilla visual original de NexusAI se conserva en [`demo.html`](demo.html),
 | WhatsApp, email, Slack y pagos | Pendiente | Requieren integraciones y credenciales adicionales |
 | Ejecución al vencer una tarea | Pendiente | La fecha se guarda; todavía no existe un cron que envíe mensajes |
 | Equipos y organizaciones | Listo | Organizaciones aisladas, selector de espacio, invitaciones y roles Owner, Admin, Member y Viewer |
-| Datos demo | Listo | Crea 20 registros de ejemplo en el espacio actual y permite borrarlos sin tocar datos reales |
+| Datos demo | Listo | Crea 20 registros de ejemplo en el espacio actual y permite restablecerlo de nuevo a cero |
 
 La automatización no necesita Claude ni OpenAI para crear una tarea. El servidor aplica la regla y escribe en Firestore. El chat y el Copilot del CRM sí usan OpenAI solo desde funciones de servidor y con `OPENAI_API_KEY` configurada. Una IA se debe usar cuando el proceso necesite comprender lenguaje: clasificar un prospecto, resumir una conversación, extraer campos o preparar una respuesta. La IA propone o clasifica; el código mantiene los permisos, límites, reintentos, acciones y auditoría.
 
@@ -172,7 +172,11 @@ El buscador y el filtro de etapa trabajan sobre los registros en tiempo real. **
 
 ### 2.7 Datos demo reversibles
 
-En **Dashboard → Overview** están los botones **Crear Demo** y **Borrar Datos Locales**. El primero crea 20 registros de ejemplo repartidos entre prospectos, tareas, historial, CRM, agentes, automatizaciones e integraciones en el espacio actualmente seleccionado. El segundo busca únicamente documentos con `isDemo: true` y los elimina en ese espacio; los registros reales permanecen intactos. Puedes usarlo en el espacio personal o en una organización donde tengas permisos de escritura. Los miembros `Viewer` solo pueden consultar los datos.
+En **Dashboard → Overview** están los botones **Crear Demo** y **Borrar Datos Locales**. El primero crea 20 registros de ejemplo repartidos entre prospectos, tareas, historial, CRM, agentes, automatizaciones e integraciones en el espacio actualmente seleccionado. El segundo restablece a cero todos los datos operativos de ese espacio (CRM, agentes, automatizaciones, integraciones, prospectos, tareas, historial y configuración), conservando la cuenta de autenticación y la membresía de la organización. Puedes usarlo en el espacio personal o en una organización donde tengas permisos de escritura. Los miembros `Viewer` solo pueden consultar los datos. La acción anterior `clearDemo` sigue disponible para integraciones antiguas y elimina solo documentos marcados como demo.
+
+### 2.8 Restablecimiento global
+
+El selector superior también incluye **Borrar todos los perfiles** para una limpieza inicial global. Esa acción exige el texto `DELETE_ALL_AUTOMA_DATA` y solo funciona para el UID configurado en `AUTOMA_DATA_RESET_OWNER_UID` (o en `TELEGRAM_OWNER_UID` si la variable opcional está vacía). Borra los datos operativos de todos los usuarios y organizaciones, pero conserva las cuentas de Firebase Authentication y sus membresías.
 
 ## 3. Ejecutar localmente
 
@@ -222,6 +226,7 @@ FIREBASE_WEB_API_KEY=...
 FIREBASE_PROJECT_ID=...
 FIREBASE_CLIENT_EMAIL=...
 FIREBASE_PRIVATE_KEY=...
+AUTOMA_DATA_RESET_OWNER_UID=...  # opcional; UID autorizado para borrar todos los perfiles
 ```
 
 Después de cambiar una variable `VITE_`, crea un nuevo deployment porque se incorpora durante el build. Después de cambiar una variable privada también conviene redeployar.
