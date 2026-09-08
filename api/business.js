@@ -3,10 +3,11 @@ import { InputError, parseCommand, planFollowUp } from '../server/domain.js';
 async function services() {
   const { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
   if (!projectId || !clientEmail || !privateKey) throw new Error('SERVER_NOT_CONFIGURED');
+  const normalizedPrivateKey = privateKey.trim().replace(/^(["'])|(["'])$/g, '').replace(/\\n/g, '\n');
   const { cert, getApps, initializeApp } = await import('firebase-admin/app');
   const { getAuth } = await import('firebase-admin/auth');
   const { getFirestore, FieldValue } = await import('firebase-admin/firestore');
-  const app = getApps()[0] || initializeApp({ credential: cert({ projectId, clientEmail, privateKey: privateKey.replace(/\\n/g, '\n') }) });
+  const app = getApps()[0] || initializeApp({ credential: cert({ projectId, clientEmail, privateKey: normalizedPrivateKey }) });
   return { auth: getAuth(app), db: getFirestore(app), FieldValue };
 }
 export default async function handler(req, res) {
@@ -22,6 +23,7 @@ export default async function handler(req, res) {
     catch (error) {
       console.error('Firebase Admin initialization failed', { code: error?.code || error?.message || 'firebase_admin_init_failed' });
       if (error?.message === 'SERVER_NOT_CONFIGURED') return res.status(503).json({ error: 'Firebase Admin is not configured in Vercel. Add FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY.', code: 'firebase_server_not_configured' });
+      if (error?.code === 'app/invalid-credential') return res.status(503).json({ error: 'Firebase Admin rejected the service account. Check FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY.', code: 'firebase_admin_credentials' });
       return res.status(503).json({ error: 'Firebase Admin could not initialize in Vercel. Check the service account variables and private key format.', code: 'firebase_admin_init_failed' });
     }
     let user;
