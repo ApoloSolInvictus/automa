@@ -136,12 +136,14 @@ users/{uid}/activities/{activityId}
 users/{uid}/memberships/{organizationId}
 users/{uid}/channels/telegram/chats/{chatId}
 users/{uid}/channels/telegram/updates/{updateId}
+users/{uid}/private/gmail                 # refresh token; sólo la función de servidor
 organizations/{organizationId}
 organizations/{organizationId}/members/{uid}
 organizations/{organizationId}/invitations/{invitationId}
 organizations/{organizationId}/agents/{agentId}
 organizations/{organizationId}/automations/{automationId}
 organizations/{organizationId}/integrations/{integrationId}
+organizations/{organizationId}/private/gmail # refresh token; sólo la función de servidor
 organizations/{organizationId}/companies/{companyId}
 organizations/{organizationId}/contacts/{contactId}
 organizations/{organizationId}/opportunities/{opportunityId}
@@ -399,7 +401,43 @@ En **Dashboard → Integrations → Telegram**, **Configure** guarda el username
 
 La primera versión procesa mensajes de texto y mantiene respuestas de texto. No ejecuta pagos, no envía correos y no modifica sistemas externos. Los mensajes con fotos, audio o documentos se ignoran hasta añadir transcripción o análisis de archivos. Para varios propietarios habrá que sustituir `TELEGRAM_OWNER_UID` por un flujo de vinculación de cuentas.
 
-## 7. Pruebas y verificación
+## 7. Conectar Gmail y enviar correos HTML
+
+La tarjeta **Dashboard → Integrations → Gmail** permite crear un borrador con un prompt para OpenAI, elegir Astra, Sol, Terra o Luna, editar el asunto y el HTML, revisar la vista previa en vivo y enviar el resultado a varios destinatarios. El envío requiere confirmación explícita. Automa guarda el refresh token únicamente en `private/gmail`, una ruta que las reglas de Firestore no exponen al navegador.
+
+### 7.1 Preparar Google Cloud
+
+1. En Google Cloud, crea o selecciona un proyecto y habilita **Gmail API**.
+2. Configura la pantalla de consentimiento OAuth. Durante pruebas, agrega tu cuenta de Gmail como **Test user**.
+3. Crea un cliente OAuth de tipo **Web application**.
+4. Registra exactamente esta Redirect URI autorizada: `https://automa.wstudio3d.com/api/gmail`.
+
+La conexión usa acceso offline y el scope mínimo `https://www.googleapis.com/auth/gmail.send`; Google entrega un refresh token al servidor para que Automa pueda enviar desde la cuenta conectada. Gmail exige correos MIME RFC 2822 codificados en base64URL para `users.messages.send`. Consulta la documentación oficial de [OAuth de servidor para Gmail](https://developers.google.com/workspace/gmail/api/auth/web-server), [OAuth para aplicaciones web](https://developers.google.com/identity/protocols/oauth2/web-server) y [envío de mensajes](https://developers.google.com/workspace/gmail/api/guides/sending).
+
+### 7.2 Variables privadas de Vercel
+
+En **Project settings → Environment Variables**, agrega en Production las siguientes variables. Marca `GMAIL_CLIENT_SECRET` y `GMAIL_OAUTH_STATE_SECRET` como **Sensitive**.
+
+```env
+GMAIL_CLIENT_ID=                 # OAuth client ID de Google Cloud
+GMAIL_CLIENT_SECRET=             # OAuth client secret de Google Cloud
+GMAIL_OAUTH_STATE_SECRET=        # secreto aleatorio largo para firmar el estado OAuth
+GMAIL_REDIRECT_URI=https://automa.wstudio3d.com/api/gmail
+```
+
+No uses una Web API Key de Firebase ni una API key de OpenAI en esas variables. Después de guardarlas, redeploya y pulsa **Connect Gmail**. Google abrirá su consentimiento y regresará a Automa; la aplicación muestra **Connected** cuando puede guardar el token de actualización. Para cuentas externas en producción, Google puede solicitar la verificación de la aplicación por tratarse de un scope de Gmail restringido.
+
+### 7.3 Uso y controles
+
+1. Pulsa **Compose email** en la tarjeta Gmail.
+2. Describe el objetivo, tono, idioma, destinatario y llamada a la acción en **AI email prompt**.
+3. Revisa el asunto, el código HTML y la vista previa lado a lado. Puedes cambiar el HTML antes de enviar.
+4. Añade hasta 50 destinatarios entre `To`, `CC` y `BCC`; separa correos con coma, punto y coma o salto de línea.
+5. Pulsa **Send with Gmail** y confirma el envío.
+
+El servidor rechaza scripts, iframes, formularios, URLs `javascript:` o `data:`, asuntos con saltos de línea y destinatarios repetidos. El historial guarda solo metadatos mínimos del envío en `runs`; no guarda el HTML ni tokens OAuth. **Disconnect** elimina de Automa el token de Gmail de ese espacio. El restablecimiento local o global también elimina `private/gmail`.
+
+## 8. Pruebas y verificación
 
 ```sh
 npm test
@@ -417,7 +455,7 @@ Ese comando necesita Java 21+. Debe confirmar lectura del propietario, denegaci�
 
 Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves ausentes o inválidas, reintentos, payloads fuera de rango y logs sin tokens.
 
-## 8. Solución de problemas
+## 9. Solución de problemas
 
 **Vercel no encuentra `package.json`.** Confirma repositorio, rama `main`, Root Directory `.`, y que el commit incluya `package.json`.
 
@@ -437,15 +475,20 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 
 **Telegram no responde.** Abre **Dashboard → Integrations → Telegram → Check status**. Si el webhook aparece como `not registered` o `different URL`, ejecuta de nuevo `npm run telegram:set-webhook`; si el usuario propietario no coincide, corrige `TELEGRAM_OWNER_UID` con el UID de Firebase Authentication. Confirma que `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_OWNER_UID` y `TELEGRAM_AGENT_ID` existan en el mismo entorno de Vercel que el dominio público, que el bot esté conectado en Telegram Business y que el chat directo se haya iniciado con **START BOT**. Un token inválido o un secreto incorrecto produce `401`; una configuración incompleta produce `503`.
 
+**Gmail muestra `Gmail is not configured`.** Confirma que las cuatro variables `GMAIL_*` estén en el mismo entorno de Vercel que el dominio público y redeploya. La URI de redirección debe coincidir exactamente con `https://automa.wstudio3d.com/api/gmail` en Google Cloud y en Vercel.
+
+**Gmail vuelve a Automa con error.** Agrega la cuenta como usuario de prueba en OAuth Consent Screen, verifica que Gmail API esté habilitada y revisa que el cliente sea de tipo Web application. Si Google no devuelve refresh token, vuelve a conectar Gmail: Automa solicita consentimiento explícito para obtener uno nuevo.
+
 **El emulador no inicia.** Instala Java 21+ y vuelve a ejecutar `npm run test:rules`.
 
-## 9. Archivos importantes
+## 10. Archivos importantes
 
 - [`index.html`](index.html): aplicación real de Automa.
 - [`src/template-app.js`](src/template-app.js): Authentication, listeners, CRM y conexión con OpenAI.
 - [`css/style.css`](css/style.css): interfaz responsive y estilos del dashboard.
 - [`api/business.js`](api/business.js): función segura de Vercel y Firebase Admin.
 - [`api/chat.js`](api/chat.js): autenticación REST y conexión aislada con OpenAI.
+- [`api/gmail.js`](api/gmail.js): OAuth de Google, generación de HTML y envío seguro por Gmail.
 - [`api/telegram.js`](api/telegram.js): webhook autenticado para WSTUDIO3DBot.
 - [`scripts/set-telegram-webhook.mjs`](scripts/set-telegram-webhook.mjs): registro seguro de la URL de Telegram.
 - [`server/domain.js`](server/domain.js): validación y planificación.
@@ -456,7 +499,7 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 - [`demo.html`](demo.html): plantilla visual original.
 - [`tests/`](tests/): pruebas funcionales, reglas y UI.
 
-## 10. Próximos pasos
+## 11. Próximos pasos
 
 1. Añadir herramientas server-side con permisos para que un agente ejecute acciones reales de negocio.
 2. Añadir un cron que busque tareas vencidas y cree ejecuciones idempotentes.

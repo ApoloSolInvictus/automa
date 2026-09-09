@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isAllowedTelegramWebhookSecret, isAllowedTelegramWebhookUrl, parseCommand, planFollowUp } from '../server/domain.js';
 import handler from '../api/business.js';
+import gmailHandler, { createRawEmail, htmlToPlainText } from '../api/gmail.js';
 const lead = { action: 'createLead', name: ' Cliente ', email: ' TEST@example.com ', value: 50, requestId: 'aabbbbbb-1111-4111-8111-111111111111' };
 test('normalizes lead without trusting supplied user identity', () => {
  const parsed = parseCommand({ ...lead, uid: 'victim' });
@@ -93,6 +94,24 @@ test('validates Telegram webhook secret characters', () => {
  assert.equal(isAllowedTelegramWebhookSecret('contains.dot'), false);
  assert.equal(isAllowedTelegramWebhookSecret(''), false);
  assert.equal(isAllowedTelegramWebhookSecret('x'.repeat(257)), false);
+});
+test('validates Gmail compose actions and creates an RFC 2822 raw message', () => {
+ const generation = parseCommand({ action:'gmailGenerate', prompt:'Write a concise follow-up in English.', model:'gpt-5.6-terra', orgId:'acme_ops' });
+ assert.equal(generation.orgId, 'acme_ops');
+ const send = parseCommand({ action:'gmailSend', to:['Client@example.com'], cc:['team@example.com'], subject:'Proposal follow-up', html:'<p>Hello <strong>Client</strong></p>' });
+ assert.deepEqual(send.to, ['client@example.com']);
+ assert.equal(htmlToPlainText('<p>Hello <strong>Client</strong></p>'), 'Hello Client');
+ const raw = createRawEmail(send);
+ const mime = Buffer.from(raw, 'base64url').toString('utf8');
+ assert.match(mime, /^MIME-Version: 1\.0/m); assert.match(mime, /^To: client@example\.com/m); assert.match(mime, /^Subject: Proposal follow-up/m);
+ assert.throws(() => parseCommand({ action:'gmailSend', to:['client@example.com','client@example.com'], subject:'Hello', html:'<p>Hello</p>' }));
+ assert.throws(() => parseCommand({ action:'gmailSend', to:['client@example.com'], subject:'Hello', html:'<script>alert(1)</script>' }));
+ assert.throws(() => parseCommand({ action:'gmailGenerate', prompt:'x', model:'claude-3' }));
+});
+test('Gmail endpoint rejects unauthenticated email actions', async () => {
+ const res = { setHeader(){}, status(code){ this.code = code; return this; }, json(body){ this.body = body; return this; } };
+ await gmailHandler({ method:'POST', headers:{}, body:{ action:'gmailStatus' } }, res);
+ assert.equal(res.code, 401); assert.equal(res.body.code, 'firebase_session_missing');
 });
 test('API validates body size and malformed commands before connecting to services', async () => {
  for (const [body,status] of [[{},400],[{padding:'x'.repeat(13000)},413]]) {

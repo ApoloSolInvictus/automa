@@ -14,7 +14,7 @@ const config = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
-let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {};
+let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {}, gmailIntegration = {};
 const crmState = { companies: [], contacts: [], opportunities: [], activities: [] };
 let currentUser = null;
 let workspace = { id: null, name: 'Personal workspace', role: 'owner', members: [], pendingInvites: [] };
@@ -113,8 +113,10 @@ function renderEntities(sectionId, rows) {
   const host = document.querySelector(`#sec-${sectionId}`); if (!host) return;
   if (sectionId === 'integrations') {
     telegramIntegration = rows.find(row => row.id === 'telegram' || row.provider?.toLowerCase() === 'telegram') || {};
+    gmailIntegration = rows.find(row => row.id === 'gmail' || row.provider?.toLowerCase() === 'gmail') || {};
     const badge = host.querySelector('[data-telegram-status-label]');
     if (badge && telegramIntegration.status) badge.textContent = telegramIntegration.status;
+    if (gmailIntegration.status) updateGmailUi({ connected: gmailIntegration.status === 'Connected', status: gmailIntegration.status, email: gmailIntegration.email || '' });
   }
   let list = host.querySelector('.nexus-live-list');
   if (!list) { list = document.createElement('div'); list.className = 'nexus-live-list mb-3'; host.querySelector('.container-fluid, .row')?.prepend(list); }
@@ -205,6 +207,11 @@ async function callBusiness(body) {
   const token = await auth.currentUser?.getIdToken(); if (!token) throw new Error('AUTH');
   const response = await fetch('/api/business', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
   const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Request failed.'); return data;
+}
+async function callGmail(body) {
+  const token = await auth.currentUser?.getIdToken(); if (!token) throw new Error('AUTH');
+  const response = await fetch('/api/gmail', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'Gmail request failed.'); return data;
 }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character])); }
 function modal(title, fields, onSave) {
@@ -366,6 +373,59 @@ function showCrmNotice(title, message) {
   box.innerHTML = `<h4 style="margin-bottom:14px">${escapeHtml(title)}</h4><div style="white-space:pre-wrap;color:var(--tx2);font-size:.85rem;line-height:1.65">${escapeHtml(message)}</div><div class="d-flex justify-content-end mt-4"><button class="bgrd btn" data-close>Close</button></div>`;
   wrap.append(box); document.body.append(wrap); box.querySelector('[data-close]').onclick = () => wrap.remove(); return wrap;
 }
+function updateGmailUi(status = {}) {
+  const connected = Boolean(status.connected);
+  document.querySelectorAll('[data-gmail-status-label]').forEach(element => { element.textContent = status.status || (connected ? 'Connected' : 'Needs setup'); });
+  document.querySelectorAll('[data-gmail-email]').forEach(element => { element.textContent = status.email || (connected ? 'Connected Gmail account' : 'HTML email composer'); });
+  document.querySelectorAll('[data-gmail-disconnect]').forEach(button => { button.disabled = !connected; });
+}
+async function loadGmailStatus() {
+  if (!currentUser) return;
+  try { updateGmailUi(await callGmail({ action: 'gmailStatus', ...workspacePayload() })); }
+  catch (error) { updateGmailUi({ status: 'Unavailable' }); console.warn('Gmail status unavailable', error.message); }
+}
+function recipientList(value) {
+  return String(value || '').split(/[;,\n]+/).map(email => email.trim()).filter(Boolean);
+}
+function previewEmail(frame, html) {
+  frame.srcdoc = html || '<!doctype html><html><body style="font-family:Arial,sans-serif;padding:28px;color:#475569">Your live HTML preview will appear here.</body></html>';
+}
+window.openGmailComposer = function openGmailComposer() {
+  if (!currentUser) return showCrmNotice('Gmail', 'Sign in before composing an email.');
+  const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#000b;z-index:3100;padding:20px;overflow:auto';
+  const box = document.createElement('div'); box.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:18px;padding:24px;width:min(1180px,100%);margin:20px auto';
+  const title = document.createElement('div'); title.className = 'd-flex align-items-start justify-content-between gap-3 mb-3';
+  title.innerHTML = '<div><h4 style="margin:0 0 5px">Gmail HTML Composer</h4><div style="font-size:.82rem;color:var(--tx3)">Describe the email to OpenAI, then review the live preview and HTML before sending.</div></div>';
+  const close = document.createElement('button'); close.className = 'boc btn'; close.textContent = 'Close'; close.onclick = () => wrap.remove(); title.append(close);
+  const form = document.createElement('div'); form.className = 'row g-3';
+  const field = (label, placeholder, value = '') => { const holder = document.createElement('div'); holder.className = 'col-md-6'; const caption = document.createElement('label'); caption.className = 'olbl'; caption.textContent = label; const input = document.createElement('input'); input.className = 'oinp'; input.placeholder = placeholder; input.value = value; holder.append(caption, input); return { holder, input }; };
+  const to = field('To', 'client@example.com, team@example.com'); const cc = field('CC (optional)', 'manager@example.com'); const bcc = field('BCC (optional)', 'archive@example.com'); const subject = field('Subject', 'Generated subject appears here');
+  const modelHolder = document.createElement('div'); modelHolder.className = 'col-md-6'; const modelLabelElement = document.createElement('label'); modelLabelElement.className = 'olbl'; modelLabelElement.textContent = 'OpenAI model'; const model = document.createElement('select'); model.className = 'oinp'; OPENAI_MODELS.forEach(option => { const entry = document.createElement('option'); entry.value = option.id; entry.textContent = option.label; entry.selected = option.id === DEFAULT_OPENAI_MODEL; model.append(entry); }); modelHolder.append(modelLabelElement, model);
+  const promptHolder = document.createElement('div'); promptHolder.className = 'col-12'; const promptLabel = document.createElement('label'); promptLabel.className = 'olbl'; promptLabel.textContent = 'AI email prompt'; const prompt = document.createElement('textarea'); prompt.className = 'oinp'; prompt.rows = 4; prompt.placeholder = 'Example: Write a warm follow-up to a prospect who requested a contract automation demo. Mention that we can schedule a 20-minute call this week.'; promptHolder.append(promptLabel, prompt);
+  form.append(to.holder, cc.holder, bcc.holder, subject.holder, modelHolder, promptHolder);
+  const editorRow = document.createElement('div'); editorRow.className = 'row g-3 mt-1';
+  const codeHolder = document.createElement('div'); codeHolder.className = 'col-lg-6'; const codeLabel = document.createElement('label'); codeLabel.className = 'olbl'; codeLabel.textContent = 'Editable HTML code'; const code = document.createElement('textarea'); code.className = 'oinp'; code.style.cssText = 'min-height:390px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.76rem;line-height:1.45'; code.spellcheck = false; code.placeholder = '<!doctype html>...'; codeHolder.append(codeLabel, code);
+  const previewHolder = document.createElement('div'); previewHolder.className = 'col-lg-6'; const previewLabel = document.createElement('label'); previewLabel.className = 'olbl'; previewLabel.textContent = 'Live email preview'; const frame = document.createElement('iframe'); frame.setAttribute('sandbox', ''); frame.title = 'Gmail HTML preview'; frame.style.cssText = 'display:block;width:100%;height:390px;background:#fff;border:1px solid var(--bd);border-radius:10px'; previewHolder.append(previewLabel, frame); editorRow.append(codeHolder, previewHolder);
+  const actions = document.createElement('div'); actions.className = 'd-flex align-items-center gap-2 justify-content-between flex-wrap mt-4'; const status = document.createElement('span'); status.style.cssText = 'font-size:.8rem;color:var(--tx3)'; status.textContent = 'Create a draft, inspect it, then send it through your connected Gmail account.'; const buttons = document.createElement('div'); buttons.className = 'd-flex gap-2'; const generate = document.createElement('button'); generate.className = 'boc btn'; generate.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles me-1"></i>Generate with OpenAI'; const send = document.createElement('button'); send.className = 'bgrd btn'; send.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i>Send with Gmail'; buttons.append(generate, send); actions.append(status, buttons);
+  const setBusy = (button, value) => { button.disabled = value; };
+  code.addEventListener('input', () => previewEmail(frame, code.value)); previewEmail(frame, '');
+  generate.onclick = async () => {
+    if (!prompt.value.trim()) return showCrmNotice('Gmail composer', 'Write an AI email prompt first.');
+    setBusy(generate, true); status.textContent = 'Generating the HTML email draft…';
+    try { const result = await callGmail({ action: 'gmailGenerate', ...workspacePayload(), prompt: prompt.value.trim(), model: model.value }); subject.input.value = result.subject; code.value = result.html; previewEmail(frame, code.value); status.textContent = `Draft generated with ${modelLabel(result.model)}. Review or edit it before sending.`; }
+    catch (error) { status.textContent = error.message || 'The email draft could not be generated.'; }
+    finally { setBusy(generate, false); }
+  };
+  send.onclick = async () => {
+    if (!subject.input.value.trim() || !code.value.trim() || !recipientList(to.input.value).length) return showCrmNotice('Gmail composer', 'Add at least one recipient, a subject, and HTML before sending.');
+    if (!window.confirm(`Send this email to ${recipientList(to.input.value).length} primary recipient${recipientList(to.input.value).length === 1 ? '' : 's'} through Gmail?`)) return;
+    setBusy(send, true); status.textContent = 'Sending email through Gmail…';
+    try { const result = await callGmail({ action: 'gmailSend', ...workspacePayload(), to: recipientList(to.input.value), cc: recipientList(cc.input.value), bcc: recipientList(bcc.input.value), subject: subject.input.value.trim(), html: code.value }); status.textContent = `Email sent through Gmail. Message ID: ${result.id || 'confirmed'}.`; }
+    catch (error) { status.textContent = error.message || 'Gmail could not send this email.'; }
+    finally { setBusy(send, false); }
+  };
+  box.append(title, form, editorRow, actions); wrap.append(box); document.body.append(wrap); return wrap;
+};
 function openCrmEditor(collection, id = null, seed = {}) {
   const label = crmKindLabels[collection] || 'CRM record';
   return modal(id ? `Edit ${label}` : `Add ${label}`, crmFields(collection, seed), data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection, ...(id ? { id } : {}), data }));
@@ -496,7 +556,12 @@ async function loadWorkspaces(user, requestedId = null) {
   try { const result = await callBusiness({ action: 'organizationList' }); organizations = result.organizations || []; } catch (error) { console.warn('Organizations unavailable', error.message); }
   workspaceOptions = [{ id: null, name: 'Personal workspace', role: 'owner', members: [], pendingInvites: [] }, ...organizations];
   workspace = workspaceOptions.find(option => option.id === requestedId) || workspaceOptions.find(option => option.id === workspace.id) || workspaceOptions[0];
-  updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(user);
+  updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(user); await loadGmailStatus();
+  const gmailResult = new URLSearchParams(window.location.search).get('gmail');
+  if (gmailResult) {
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+    showCrmNotice('Gmail', gmailResult === 'connected' ? 'Gmail is connected. You can now generate, preview, edit, and send HTML email.' : 'Gmail could not complete the connection. Review the Google OAuth settings in Vercel and try again.');
+  }
 }
 function wireWorkspace() {
   if (workspaceWired) return; workspaceWired = true;
@@ -545,6 +610,24 @@ function wireWorkspace() {
     } catch (error) { alert(error.message); }
     finally { telegramRegisterButton.disabled = false; }
   });
+  const gmailConnectButton = section('integrations')?.querySelector('[data-gmail-connect]');
+  gmailConnectButton?.addEventListener('click', async () => {
+    gmailConnectButton.disabled = true;
+    try { const result = await callGmail({ action: 'gmailConnect', ...workspacePayload() }); window.location.assign(result.authorizeUrl); }
+    catch (error) { showCrmNotice('Connect Gmail', error.message || 'Gmail could not start the secure connection.'); gmailConnectButton.disabled = false; }
+  });
+  const gmailStatusButton = section('integrations')?.querySelector('[data-gmail-status]');
+  gmailStatusButton?.addEventListener('click', async () => { gmailStatusButton.disabled = true; await loadGmailStatus(); gmailStatusButton.disabled = false; });
+  const gmailDisconnectButton = section('integrations')?.querySelector('[data-gmail-disconnect]');
+  gmailDisconnectButton?.addEventListener('click', async () => {
+    if (!window.confirm('Disconnect Gmail from this workspace? Automa will delete its stored Gmail authorization.')) return;
+    gmailDisconnectButton.disabled = true;
+    try { await callGmail({ action: 'gmailDisconnect', ...workspacePayload() }); updateGmailUi({ status: 'Disconnected' }); showCrmNotice('Gmail', 'Gmail was disconnected from this workspace.'); }
+    catch (error) { showCrmNotice('Gmail', error.message || 'Gmail could not be disconnected.'); }
+    finally { await loadGmailStatus(); }
+  });
+  const gmailComposeButton = section('integrations')?.querySelector('[data-gmail-compose]');
+  gmailComposeButton?.addEventListener('click', () => window.openGmailComposer());
 }
 function subscribe(user) {
   const run = ++generation;
@@ -562,7 +645,7 @@ function subscribe(user) {
 
 if (Object.values(config).every(Boolean)) {
   const app = initializeApp(config); auth = getAuth(app); db = getFirestore(app);
-  onAuthStateChanged(auth, user => { stopSubscriptions(); telegramIntegration = {}; resetCrmState(); currentUser = user; if (user) { window.loginSuccess?.(userShape(user)); loadWorkspaces(user); } else { generation++; workspace = { id: null, name: 'Personal workspace', role: 'owner', members: [], pendingInvites: [] }; workspaceOptions = [workspace]; updateWorkspaceUi(); document.querySelector('#dashboard')?.style.setProperty('display', 'none'); document.querySelector('#landing')?.style.setProperty('display', 'block'); } });
+  onAuthStateChanged(auth, user => { stopSubscriptions(); telegramIntegration = {}; gmailIntegration = {}; resetCrmState(); currentUser = user; if (user) { window.loginSuccess?.(userShape(user)); loadWorkspaces(user); } else { generation++; workspace = { id: null, name: 'Personal workspace', role: 'owner', members: [], pendingInvites: [] }; workspaceOptions = [workspace]; updateWorkspaceUi(); updateGmailUi({ status: 'Needs setup' }); document.querySelector('#dashboard')?.style.setProperty('display', 'none'); document.querySelector('#landing')?.style.setProperty('display', 'block'); } });
   const forgot = document.querySelector('#fLogin a[href="#"]');
   forgot?.addEventListener('click', async event => { event.preventDefault(); const email = $('loginEmail')?.value.trim(); if (!email) return showError('login', 'Enter your email first.'); try { await sendPasswordResetEmail(auth, email); showError('login', 'If that account exists, a reset email has been sent.'); } catch (error) { showError('login', errorMessage(error)); } });
 } else {

@@ -25,5 +25,6 @@ test('only owner reads allowed collections; all browser writes and cross-account
    await assertFails(setDoc(doc(owner,path),{name:'forged'}));
   }
   await assertFails(getDoc(doc(owner,'users/owner/internal/quota')));
+  await assertFails(getDoc(doc(owner,'users/owner/private/gmail')));
  } finally { await env.cleanup(); }
 });

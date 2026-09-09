@@ -71,6 +71,7 @@ async function verifyFirebaseSession(token) {
 export async function requestOpenAI(command, options = {}) {
   const apiKey = cleanEnv(process.env.OPENAI_API_KEY);
   const model = cleanEnv(options.model) || cleanEnv(process.env.OPENAI_MODEL) || DEFAULT_OPENAI_MODEL;
+  const maxOutputTokens = Number.isInteger(options.maxOutputTokens) && options.maxOutputTokens >= 100 && options.maxOutputTokens <= 4000 ? options.maxOutputTokens : 800;
   if (!apiKey) return { status: 503, body: { error: 'OpenAI is not configured in Vercel.', code: 'openai_key_missing' } };
   if (!isAllowedOpenAIModel(model)) return { status: 503, body: { error: 'The configured OpenAI model is not in the supported agent catalog.', code: 'openai_model_invalid' } };
   const instructions = cleanEnv(options.instructions) || systemInstructions;
@@ -86,7 +87,7 @@ export async function requestOpenAI(command, options = {}) {
       body: JSON.stringify({
         model,
         store: false,
-        max_output_tokens: 800,
+        max_output_tokens: maxOutputTokens,
         instructions,
         input: [...command.history, { role: 'user', content: command.message }]
       }),
