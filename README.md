@@ -411,6 +411,9 @@ La tarjeta **Dashboard → Integrations → Gmail** permite crear un borrador co
 2. Configura la pantalla de consentimiento OAuth. Durante pruebas, agrega tu cuenta de Gmail como **Test user**.
 3. Crea un cliente OAuth de tipo **Web application**.
 4. Registra exactamente esta Redirect URI autorizada: `https://automa.wstudio3d.com/api/gmail`.
+5. En la pantalla de consentimiento, publica estos enlaces de la aplicación:
+   - Privacy Policy: `https://automa.wstudio3d.com/privacy.html`
+   - Terms of Service: `https://automa.wstudio3d.com/terms.html`
 
 La conexión usa acceso offline y el scope mínimo `https://www.googleapis.com/auth/gmail.send`; Google entrega un refresh token al servidor para que Automa pueda enviar desde la cuenta conectada. Gmail exige correos MIME RFC 2822 codificados en base64URL para `users.messages.send`. Consulta la documentación oficial de [OAuth de servidor para Gmail](https://developers.google.com/workspace/gmail/api/auth/web-server), [OAuth para aplicaciones web](https://developers.google.com/identity/protocols/oauth2/web-server) y [envío de mensajes](https://developers.google.com/workspace/gmail/api/guides/sending).
 
