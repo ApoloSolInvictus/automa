@@ -53,6 +53,15 @@ test('parses one-time Telegram pairing commands and scopes CRM context', () => {
   assert.equal(context.company.notes, undefined);
   assert.deepEqual(context.contracts.map(item => item.name), ['Approved agreement']);
   assert.deepEqual(context.services.map(item => item.name), ['Managed workflows']);
+  const ownerContext = JSON.parse(buildTelegramCrmContext({
+    contacts: [{ id: 'contact-1', firstName: 'Alex', lastName: 'Morgan', email: 'private@example.com' }],
+    companies: [{ id: 'company-1', name: 'Acme', industry: 'Services' }],
+    contracts: [{ id: 'contract-1', name: 'Agreement', status: 'active', summary: 'approved' }],
+    services: [{ id: 'service-1', name: 'Workflows', status: 'active' }]
+  }, { scope: 'owner', ownerUid: 'owner-1' }));
+  assert.equal(ownerContext.contacts[0].email, undefined);
+  assert.equal(ownerContext.companies[0].name, 'Acme');
+  assert.equal(ownerContext.contracts[0].name, 'Agreement');
   assert.equal(telegramBindingKey('123'), telegramBindingKey('123'));
   assert.notEqual(telegramBindingKey('123'), telegramBindingKey('124'));
 });

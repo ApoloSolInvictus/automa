@@ -131,6 +131,8 @@ test('validates Gmail compose actions and creates an RFC 2822 raw message', () =
 test('validates Telegram CRM pairing commands', () => {
  const pairing = parseCommand({ action:'telegramPairingCreate', contactId:'contact_123', orgId:'acme_ops' });
  assert.deepEqual(pairing, { action:'telegramPairingCreate', contactId:'contact_123', orgId:'acme_ops' });
+ const ownerPairing = parseCommand({ action:'telegramOwnerPairingCreate', orgId:'acme_ops' });
+ assert.deepEqual(ownerPairing, { action:'telegramOwnerPairingCreate', orgId:'acme_ops' });
  const revoke = parseCommand({ action:'telegramPairingRevoke', pairingId:'pairing_123' });
  assert.deepEqual(revoke, { action:'telegramPairingRevoke', pairingId:'pairing_123' });
  assert.throws(() => parseCommand({ action:'telegramPairingCreate', contactId:'../other' }));

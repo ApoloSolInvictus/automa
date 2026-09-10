@@ -231,7 +231,7 @@ export function parseCommand(body) {
     }
     return { action: body.action, collection, id, orgId, data };
   }
-  if (body.action === 'telegramStatus' || body.action === 'telegramRegister' || body.action === 'telegramIntakeCreate') return { action: body.action, ...(body.orgId == null ? {} : { orgId: organizationId(body.orgId) }) };
+  if (body.action === 'telegramStatus' || body.action === 'telegramRegister' || body.action === 'telegramIntakeCreate' || body.action === 'telegramOwnerPairingCreate') return { action: body.action, ...(body.orgId == null ? {} : { orgId: organizationId(body.orgId) }) };
   if (body.action === 'telegramPairingCreate') {
     const contactId = text(body.contactId, 'Contacto', 80);
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(contactId)) throw new InputError('Contacto inválido.');

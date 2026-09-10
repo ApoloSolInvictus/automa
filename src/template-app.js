@@ -313,6 +313,16 @@ window.openTelegramPairing = function openTelegramPairing() {
     showCrmNotice('Telegram client link created', `Send this one-time link to the selected customer before it expires:\n\n${result.deepLink}\n\nExpires: ${new Date(result.expiresAt).toLocaleString()}`);
   });
 };
+window.openTelegramOwnerPairing = function openTelegramOwnerPairing() {
+  if (!currentUser) return showCrmNotice('Link my Telegram account', 'Sign in with the Firebase account that owns this workspace first.');
+  if (workspace.role !== 'owner' && workspace.role !== 'admin') return showCrmNotice('Link my Telegram account', 'Only the workspace owner or an administrator can create this secure owner link.');
+  return modal('Link my Telegram account', [
+    { type: 'note', value: `Create a one-time Telegram link for the signed-in Automa account${currentUser.email ? ` (${currentUser.email})` : ''}. Opening it in your new bot binds this Telegram chat to the selected workspace. The link expires in 15 minutes and the bot token is never stored here.` }
+  ], async () => {
+    const result = await callBusiness({ action: 'telegramOwnerPairingCreate', ...workspacePayload() });
+    showCrmNotice('Owner Telegram link created', `Open this one-time link in Telegram before it expires:\n\n${result.deepLink}\n\nExpires: ${new Date(result.expiresAt).toLocaleString()}`);
+  });
+};
 window.openTelegramIntake = function openTelegramIntake() {
   if (!currentUser) return showCrmNotice('Telegram client intake', 'Sign in before creating an intake link.');
   if (workspace.role === 'viewer') return showCrmNotice('Telegram client intake', 'Viewer members have read-only access. Ask an Owner or Admin to create the secure link.');
@@ -829,6 +839,8 @@ function wireWorkspace() {
   });
   const telegramPairButton = section('integrations')?.querySelector('[data-telegram-pair]');
   telegramPairButton?.addEventListener('click', () => window.openTelegramPairing());
+  const telegramOwnerPairButton = section('integrations')?.querySelector('[data-telegram-owner-pair]');
+  telegramOwnerPairButton?.addEventListener('click', () => window.openTelegramOwnerPairing());
   const telegramIntakeButton = section('integrations')?.querySelector('[data-telegram-intake]');
   telegramIntakeButton?.addEventListener('click', () => window.openTelegramIntake());
   const gmailConnectButton = section('integrations')?.querySelector('[data-gmail-connect]');

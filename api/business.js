@@ -161,6 +161,33 @@ async function createTelegramPairing(db, FieldValue, root, uid, contactId) {
     }
   };
 }
+
+async function createTelegramOwnerPairing(FieldValue, root, uid) {
+  const rawCode = randomBytes(24).toString('base64url');
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  const pairingRef = root.collection('telegramPairings').doc();
+  const integrationSnapshot = await root.collection('integrations').doc('telegram').get();
+  const botUsername = telegramBotUsername(integrationSnapshot.data()?.botUsername);
+  await pairingRef.set({
+    codeHash: createHash('sha256').update(rawCode).digest('hex'),
+    type: 'owner',
+    status: 'pending',
+    ownerUid: uid,
+    createdBy: uid,
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAt
+  });
+  return {
+    status: 201,
+    body: {
+      ok: true,
+      code: 'telegram_owner_pairing_created',
+      pairingId: pairingRef.id,
+      deepLink: `https://t.me/${botUsername}?start=automa_${rawCode}`,
+      expiresAt: expiresAt.toISOString()
+    }
+  };
+}
 async function createTelegramIntake(db, FieldValue, root, uid) {
   const rawCode = randomBytes(24).toString('base64url');
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
@@ -429,12 +456,14 @@ export default async function handler(req, res) {
       const result = await requestOpenAI({ message: `<crm_snapshot>\n${cmd.context}\n</crm_snapshot>`, history: [] }, { model, instructions });
       return res.status(result.status).json({ ...result.body, agentId: requestedAgentId, agent: agent.name || 'Automa CRM Copilot' });
     }
-    if (cmd.action === 'telegramStatus' || cmd.action === 'telegramRegister' || cmd.action === 'telegramPairingCreate' || cmd.action === 'telegramPairingRevoke' || cmd.action === 'telegramIntakeCreate' || cmd.action === 'telegramIntakeRevoke') {
+    if (cmd.action === 'telegramStatus' || cmd.action === 'telegramRegister' || cmd.action === 'telegramPairingCreate' || cmd.action === 'telegramOwnerPairingCreate' || cmd.action === 'telegramPairingRevoke' || cmd.action === 'telegramIntakeCreate' || cmd.action === 'telegramIntakeRevoke') {
       const root = workspaceRoot(db, user.uid, cmd.orgId);
       const membership = cmd.orgId ? await organizationAccess(db, cmd.orgId, user.uid) : null;
       if (cmd.orgId && !membership) return res.status(403).json({ error: 'You are not a member of this organization.', code: 'organization_forbidden' });
-      if (cmd.action === 'telegramPairingCreate' || cmd.action === 'telegramPairingRevoke' || cmd.action === 'telegramIntakeCreate' || cmd.action === 'telegramIntakeRevoke' || cmd.action === 'telegramRegister') {
+      if (cmd.orgId && membership.role === 'viewer' && cmd.action === 'telegramOwnerPairingCreate') return res.status(403).json({ error: 'Only an organization owner or admin can create an owner Telegram link.', code: 'organization_forbidden' });
+      if (cmd.action === 'telegramPairingCreate' || cmd.action === 'telegramOwnerPairingCreate' || cmd.action === 'telegramPairingRevoke' || cmd.action === 'telegramIntakeCreate' || cmd.action === 'telegramIntakeRevoke' || cmd.action === 'telegramRegister') {
         if (cmd.orgId && !['owner', 'admin'].includes(membership.role)) return res.status(403).json({ error: 'Only an organization owner or admin can manage Telegram.', code: 'organization_forbidden' });
+        if (!cmd.orgId && cmd.action === 'telegramOwnerPairingCreate' && cleanEnv(process.env.TELEGRAM_OWNER_UID) !== user.uid) return res.status(409).json({ error: 'TELEGRAM_OWNER_UID must match the signed-in Firebase user before creating an owner Telegram link.', code: 'telegram_owner_mismatch' });
       }
       if (cmd.action === 'telegramStatus') return res.status(200).json(await telegramStatus(db, user.uid, cmd.orgId));
       if (cmd.action === 'telegramRegister') {
@@ -443,6 +472,8 @@ export default async function handler(req, res) {
       }
       const result = cmd.action === 'telegramPairingCreate'
         ? await createTelegramPairing(db, FieldValue, root, user.uid, cmd.contactId)
+        : cmd.action === 'telegramOwnerPairingCreate'
+          ? await createTelegramOwnerPairing(FieldValue, root, user.uid)
         : cmd.action === 'telegramPairingRevoke'
           ? await revokeTelegramPairing(db, root, cmd.pairingId)
           : cmd.action === 'telegramIntakeCreate'
