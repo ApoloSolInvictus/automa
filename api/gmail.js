@@ -172,9 +172,9 @@ function encodedHeader(value) {
   return /^[\x20-\x7e]*$/.test(clean) ? clean : `=?UTF-8?B?${Buffer.from(clean, 'utf8').toString('base64')}?=`;
 }
 
-export function createRawEmail({ to, cc = [], bcc = [], subject, html, plainText }) {
+export function createRawEmail({ from = '', to, cc = [], bcc = [], subject, html, plainText }) {
   const boundary = `automa_${randomBytes(12).toString('hex')}`;
-  const headers = ['MIME-Version: 1.0', `To: ${to.join(', ')}`, cc.length ? `Cc: ${cc.join(', ')}` : '', bcc.length ? `Bcc: ${bcc.join(', ')}` : '', `Subject: ${encodedHeader(subject)}`, `Content-Type: multipart/alternative; boundary="${boundary}"`].filter(Boolean);
+  const headers = ['MIME-Version: 1.0', from ? `From: ${encodedHeader(from)}` : '', `To: ${to.join(', ')}`, cc.length ? `Cc: ${cc.join(', ')}` : '', bcc.length ? `Bcc: ${bcc.join(', ')}` : '', `Date: ${new Date().toUTCString()}`, `Subject: ${encodedHeader(subject)}`, `Content-Type: multipart/alternative; boundary="${boundary}"`].filter(Boolean);
   const body = [
     `--${boundary}`,
     'Content-Type: text/plain; charset="UTF-8"',
@@ -302,7 +302,8 @@ export default async function handler(req, res) {
     if (command.action === 'gmailSend') {
       const config = oauthConfig();
       const credentials = await root.collection('private').doc('gmail').get();
-      const refreshToken = credentials.data()?.refreshToken;
+      const credentialData = credentials.data() || {};
+      const refreshToken = credentialData.refreshToken;
       if (!credentials.exists || typeof refreshToken !== 'string' || !refreshToken) return res.status(409).json({ error: 'Connect Gmail before sending an email.', code: 'gmail_not_connected' });
       let accessToken;
       try { accessToken = await refreshAccessToken(refreshToken, config); }
@@ -310,12 +311,17 @@ export default async function handler(req, res) {
         await root.collection('integrations').doc('gmail').set({ provider: 'gmail', status: 'Reconnect required', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
         return res.status(409).json({ error: 'Gmail authorization expired or was revoked. Reconnect Gmail and try again.', code: error.code || 'gmail_reconnect_required' });
       }
-      const raw = createRawEmail(command);
-      const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ raw }), signal: AbortSignal.timeout(18000) });
+      let sender = typeof credentialData.email === 'string' ? credentialData.email.trim().toLowerCase() : '';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sender)) sender = await gmailEmail(accessToken);
+      if (!sender) return res.status(409).json({ error: 'Automa could not identify the connected Gmail sender. Disconnect and reconnect Gmail.', code: 'gmail_sender_missing' });
+      const raw = createRawEmail({ ...command, from: sender });
+      const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ raw }), signal: AbortSignal.timeout(18000) });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        console.error('Gmail send failed', { status: response.status, reason: String(payload?.error?.status || payload?.error?.message || '').slice(0, 80) });
-        return res.status(502).json({ error: 'Gmail could not send this email. Review the recipients and Gmail connection.', code: 'gmail_send_failed' });
+        const reason = String(payload?.error?.message || payload?.error?.status || '').replace(/[^\x20-\x7e]/g, '').replace(/[\r\n]+/g, ' ').trim().slice(0, 180);
+        const code = response.status === 401 ? 'gmail_access_expired' : response.status === 403 ? 'gmail_access_denied' : response.status === 429 ? 'gmail_rate_limited' : 'gmail_send_failed';
+        console.error('Gmail send failed', { status: response.status, reason });
+        return res.status(response.status === 429 ? 429 : 502).json({ error: reason ? `Gmail rejected the message: ${reason}` : 'Gmail could not send this email. Review the recipients and Gmail connection.', code });
       }
       await root.collection('runs').add({ type: 'gmail_send', provider: 'gmail', status: 'completed', subject: command.subject, recipientCount: command.to.length + command.cc.length + command.bcc.length, message: `Gmail sent “${command.subject}” to ${command.to.length} primary recipient${command.to.length === 1 ? '' : 's'}.`, gmailMessageId: payload.id || '', createdAt: FieldValue.serverTimestamp() });
       return res.status(200).json({ ok: true, id: payload.id || '', threadId: payload.threadId || '' });

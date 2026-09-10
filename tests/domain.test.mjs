@@ -98,12 +98,12 @@ test('validates Telegram webhook secret characters', () => {
 test('validates Gmail compose actions and creates an RFC 2822 raw message', () => {
  const generation = parseCommand({ action:'gmailGenerate', prompt:'Write a concise follow-up in English.', model:'gpt-5.6-terra', orgId:'acme_ops' });
  assert.equal(generation.orgId, 'acme_ops');
- const send = parseCommand({ action:'gmailSend', to:['Client@example.com'], cc:['team@example.com'], subject:'Proposal follow-up', html:'<p>Hello <strong>Client</strong></p>' });
+ const send = parseCommand({ action:'gmailSend', to:['Client@example.com'], cc:['team@example.com'], bcc:['archive@example.com'], subject:'Proposal follow-up', html:'<p>Hello <strong>Client</strong></p>' });
  assert.deepEqual(send.to, ['client@example.com']);
  assert.equal(htmlToPlainText('<p>Hello <strong>Client</strong></p>'), 'Hello Client');
- const raw = createRawEmail(send);
+ const raw = createRawEmail({ ...send, from:'sender@example.com' });
  const mime = Buffer.from(raw, 'base64url').toString('utf8');
- assert.match(mime, /^MIME-Version: 1\.0/m); assert.match(mime, /^To: client@example\.com/m); assert.match(mime, /^Subject: Proposal follow-up/m);
+ assert.match(mime, /^MIME-Version: 1\.0/m); assert.match(mime, /^From: sender@example\.com/m); assert.match(mime, /^To: client@example\.com/m); assert.match(mime, /^Cc: team@example\.com/m); assert.match(mime, /^Bcc: archive@example\.com/m); assert.match(mime, /^Subject: Proposal follow-up/m);
  assert.throws(() => parseCommand({ action:'gmailSend', to:['client@example.com','client@example.com'], subject:'Hello', html:'<p>Hello</p>' }));
  assert.throws(() => parseCommand({ action:'gmailSend', to:['client@example.com'], subject:'Hello', html:'<script>alert(1)</script>' }));
  assert.throws(() => parseCommand({ action:'gmailGenerate', prompt:'x', model:'claude-3' }));
