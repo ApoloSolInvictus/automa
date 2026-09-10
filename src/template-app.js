@@ -850,7 +850,10 @@ function subscribe(user) {
   resetStats();
   const watch = (name, callback) => {
     const source = workspace.id ? collection(db, 'organizations', workspace.id, name) : collection(db, 'users', user.uid, name);
-    const stop = onSnapshot(query(source, orderBy('createdAt', 'desc'), limit(100)), snap => { if (generation !== run) return; const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); updateStats(name, rows); callback(rows); }, error => { if (generation === run) console.warn(`${name} unavailable`, error.code); });
+    // Older integration documents may predate createdAt. Keep them visible
+    // after a reload while newer records continue to use the ordered query.
+    const sourceQuery = name === 'integrations' ? query(source, limit(100)) : query(source, orderBy('createdAt', 'desc'), limit(100));
+    const stop = onSnapshot(sourceQuery, snap => { if (generation !== run) return; const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); updateStats(name, rows); callback(rows); }, error => { if (generation === run) console.warn(`${name} unavailable`, error.code); });
     stops.push(stop);
   };
   watch('leads', rows => renderActivity(rows)); watch('tasks', rows => renderActivity(rows)); watch('runs', rows => renderActivity(rows));
