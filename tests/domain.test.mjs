@@ -108,6 +108,14 @@ test('validates Gmail compose actions and creates an RFC 2822 raw message', () =
  assert.throws(() => parseCommand({ action:'gmailSend', to:['client@example.com'], subject:'Hello', html:'<script>alert(1)</script>' }));
  assert.throws(() => parseCommand({ action:'gmailGenerate', prompt:'x', model:'claude-3' }));
 });
+test('validates reusable Gmail HTML templates', () => {
+ const saved = parseCommand({ action:'gmailTemplateSave', id:'welcome_1', name:' Automa welcome ', subject:'Welcome to Automa', html:'<p>Hello <strong>customer</strong></p>', model:'gpt-5.6-terra', orgId:'acme_ops' });
+ assert.equal(saved.name, 'Automa welcome'); assert.equal(saved.id, 'welcome_1'); assert.equal(saved.orgId, 'acme_ops');
+ assert.deepEqual(parseCommand({ action:'gmailTemplateList' }), { action:'gmailTemplateList', orgId:null });
+ assert.equal(parseCommand({ action:'gmailTemplateDelete', id:'welcome_1' }).id, 'welcome_1');
+ assert.throws(() => parseCommand({ action:'gmailTemplateSave', name:'Template', subject:'Hello\nBcc: attacker@example.com', html:'<p>Hello</p>' }));
+ assert.throws(() => parseCommand({ action:'gmailTemplateSave', name:'Template', subject:'Hello', html:'<script>alert(1)</script>' }));
+});
 test('Gmail endpoint rejects unauthenticated email actions', async () => {
  const res = { setHeader(){}, status(code){ this.code = code; return this; }, json(body){ this.body = body; return this; } };
  await gmailHandler({ method:'POST', headers:{}, body:{ action:'gmailStatus' } }, res);

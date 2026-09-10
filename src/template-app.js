@@ -401,20 +401,60 @@ window.openGmailComposer = function openGmailComposer() {
   const field = (label, placeholder, value = '') => { const holder = document.createElement('div'); holder.className = 'col-md-6'; const caption = document.createElement('label'); caption.className = 'olbl'; caption.textContent = label; const input = document.createElement('input'); input.className = 'oinp'; input.placeholder = placeholder; input.value = value; holder.append(caption, input); return { holder, input }; };
   const to = field('To', 'client@example.com, team@example.com'); const cc = field('CC (optional)', 'manager@example.com'); const bcc = field('BCC (optional)', 'archive@example.com'); const subject = field('Subject', 'Generated subject appears here');
   const modelHolder = document.createElement('div'); modelHolder.className = 'col-md-6'; const modelLabelElement = document.createElement('label'); modelLabelElement.className = 'olbl'; modelLabelElement.textContent = 'OpenAI model'; const model = document.createElement('select'); model.className = 'oinp'; OPENAI_MODELS.forEach(option => { const entry = document.createElement('option'); entry.value = option.id; entry.textContent = option.label; entry.selected = option.id === DEFAULT_OPENAI_MODEL; model.append(entry); }); modelHolder.append(modelLabelElement, model);
-  const promptHolder = document.createElement('div'); promptHolder.className = 'col-12'; const promptLabel = document.createElement('label'); promptLabel.className = 'olbl'; promptLabel.textContent = 'AI email prompt'; const prompt = document.createElement('textarea'); prompt.className = 'oinp'; prompt.rows = 4; prompt.placeholder = 'Example: Write a warm follow-up to a prospect who requested a contract automation demo. Mention that we can schedule a 20-minute call this week.'; promptHolder.append(promptLabel, prompt);
-  form.append(to.holder, cc.holder, bcc.holder, subject.holder, modelHolder, promptHolder);
+  const templateName = field('Template name (optional)', 'Automa customer introduction');
+  const templateHolder = document.createElement('div'); templateHolder.className = 'col-md-6'; const templateLabel = document.createElement('label'); templateLabel.className = 'olbl'; templateLabel.textContent = 'Saved HTML templates'; const templateRow = document.createElement('div'); templateRow.className = 'd-flex gap-2'; const templates = document.createElement('select'); templates.className = 'oinp'; templates.setAttribute('aria-label', 'Saved HTML templates'); const emptyTemplate = document.createElement('option'); emptyTemplate.value = ''; emptyTemplate.textContent = 'Load a saved template…'; templates.append(emptyTemplate); const deleteTemplate = document.createElement('button'); deleteTemplate.className = 'boc btn px-3'; deleteTemplate.type = 'button'; deleteTemplate.title = 'Delete selected template'; deleteTemplate.innerHTML = '<i class="fa-regular fa-trash-can"></i>'; deleteTemplate.disabled = true; templateRow.append(templates, deleteTemplate); templateHolder.append(templateLabel, templateRow);
+  const promptHolder = document.createElement('div'); promptHolder.className = 'col-12'; const promptLabel = document.createElement('label'); promptLabel.className = 'olbl'; promptLabel.textContent = 'AI email prompt'; const prompt = document.createElement('textarea'); prompt.className = 'oinp'; prompt.rows = 4; prompt.placeholder = 'Example: Write a warm welcome email for Automa customers. Use an email-safe HTML layout, the Automa text logo, three benefits, and a clear call to action.'; promptHolder.append(promptLabel, prompt);
+  form.append(to.holder, cc.holder, bcc.holder, subject.holder, modelHolder, templateName.holder, templateHolder, promptHolder);
   const editorRow = document.createElement('div'); editorRow.className = 'row g-3 mt-1';
   const codeHolder = document.createElement('div'); codeHolder.className = 'col-lg-6'; const codeLabel = document.createElement('label'); codeLabel.className = 'olbl'; codeLabel.textContent = 'Editable HTML code'; const code = document.createElement('textarea'); code.className = 'oinp'; code.style.cssText = 'min-height:390px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.76rem;line-height:1.45'; code.spellcheck = false; code.placeholder = '<!doctype html>...'; codeHolder.append(codeLabel, code);
   const previewHolder = document.createElement('div'); previewHolder.className = 'col-lg-6'; const previewLabel = document.createElement('label'); previewLabel.className = 'olbl'; previewLabel.textContent = 'Live email preview'; const frame = document.createElement('iframe'); frame.setAttribute('sandbox', ''); frame.title = 'Gmail HTML preview'; frame.style.cssText = 'display:block;width:100%;height:390px;background:#fff;border:1px solid var(--bd);border-radius:10px'; previewHolder.append(previewLabel, frame); editorRow.append(codeHolder, previewHolder);
-  const actions = document.createElement('div'); actions.className = 'd-flex align-items-center gap-2 justify-content-between flex-wrap mt-4'; const status = document.createElement('span'); status.style.cssText = 'font-size:.8rem;color:var(--tx3)'; status.textContent = 'Create a draft, inspect it, then send it through your connected Gmail account.'; const buttons = document.createElement('div'); buttons.className = 'd-flex gap-2'; const generate = document.createElement('button'); generate.className = 'boc btn'; generate.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles me-1"></i>Generate with OpenAI'; const send = document.createElement('button'); send.className = 'bgrd btn'; send.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i>Send with Gmail'; buttons.append(generate, send); actions.append(status, buttons);
+  const actions = document.createElement('div'); actions.className = 'd-flex align-items-center gap-2 justify-content-between flex-wrap mt-4'; const status = document.createElement('span'); status.style.cssText = 'font-size:.8rem;color:var(--tx3)'; status.textContent = 'Create a draft, inspect it, optionally save it as a template, then send it through Gmail.'; const buttons = document.createElement('div'); buttons.className = 'd-flex gap-2 flex-wrap'; const generate = document.createElement('button'); generate.className = 'boc btn'; generate.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles me-1"></i>Generate with OpenAI'; const saveTemplate = document.createElement('button'); saveTemplate.className = 'boc btn'; saveTemplate.innerHTML = '<i class="fa-regular fa-bookmark me-1"></i>Save HTML as template'; const send = document.createElement('button'); send.className = 'bgrd btn'; send.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i>Send with Gmail'; buttons.append(generate, saveTemplate, send); actions.append(status, buttons);
   const setBusy = (button, value) => { button.disabled = value; };
+  let activeTemplateId = null;
+  const loadTemplates = async (selectedId = activeTemplateId) => {
+    try {
+      const result = await callGmail({ action: 'gmailTemplateList', ...workspacePayload() });
+      templates.replaceChildren();
+      const blank = document.createElement('option'); blank.value = ''; blank.textContent = 'Load a saved template…'; templates.append(blank);
+      (result.templates || []).forEach(item => { const option = document.createElement('option'); option.value = item.id; option.textContent = item.name; option.dataset.template = JSON.stringify(item); templates.append(option); });
+      templates.value = selectedId || '';
+      deleteTemplate.disabled = !templates.value;
+    } catch (error) { status.textContent = error.message || 'Saved templates could not be loaded.'; }
+  };
   code.addEventListener('input', () => previewEmail(frame, code.value)); previewEmail(frame, '');
+  templates.addEventListener('change', () => {
+    const selected = templates.selectedOptions[0];
+    activeTemplateId = templates.value || null; deleteTemplate.disabled = !activeTemplateId;
+    if (!activeTemplateId || !selected?.dataset.template) return;
+    try {
+      const saved = JSON.parse(selected.dataset.template);
+      templateName.input.value = saved.name || ''; subject.input.value = saved.subject || ''; code.value = saved.html || ''; previewEmail(frame, code.value);
+      if (saved.model && [...model.options].some(option => option.value === saved.model)) model.value = saved.model;
+      status.textContent = `Loaded template “${saved.name}”. Review it before sending.`;
+    } catch { status.textContent = 'This saved template could not be loaded.'; }
+  });
+  deleteTemplate.onclick = async () => {
+    if (!activeTemplateId || !window.confirm('Delete this saved HTML template?')) return;
+    setBusy(deleteTemplate, true);
+    try { await callGmail({ action: 'gmailTemplateDelete', ...workspacePayload(), id: activeTemplateId }); activeTemplateId = null; templateName.input.value = ''; await loadTemplates(); status.textContent = 'Saved template deleted.'; }
+    catch (error) { status.textContent = error.message || 'The template could not be deleted.'; }
+    finally { setBusy(deleteTemplate, false); }
+  };
   generate.onclick = async () => {
     if (!prompt.value.trim()) return showCrmNotice('Gmail composer', 'Write an AI email prompt first.');
     setBusy(generate, true); status.textContent = 'Generating the HTML email draft…';
     try { const result = await callGmail({ action: 'gmailGenerate', ...workspacePayload(), prompt: prompt.value.trim(), model: model.value }); subject.input.value = result.subject; code.value = result.html; previewEmail(frame, code.value); status.textContent = `Draft generated with ${modelLabel(result.model)}. Review or edit it before sending.`; }
     catch (error) { status.textContent = error.message || 'The email draft could not be generated.'; }
     finally { setBusy(generate, false); }
+  };
+  saveTemplate.onclick = async () => {
+    if (!templateName.input.value.trim() || !subject.input.value.trim() || !code.value.trim()) return showCrmNotice('Save template', 'Add a template name, subject, and HTML before saving.');
+    setBusy(saveTemplate, true); status.textContent = 'Saving the HTML template…';
+    try {
+      const result = await callGmail({ action: 'gmailTemplateSave', ...workspacePayload(), ...(activeTemplateId ? { id: activeTemplateId } : {}), name: templateName.input.value.trim(), subject: subject.input.value.trim(), html: code.value, model: model.value });
+      activeTemplateId = result.template?.id || activeTemplateId; await loadTemplates(activeTemplateId); status.textContent = `Template “${templateName.input.value.trim()}” saved. You can load it again from Saved HTML templates.`;
+    } catch (error) { status.textContent = error.message || 'The HTML template could not be saved.'; }
+    finally { setBusy(saveTemplate, false); }
   };
   send.onclick = async () => {
     if (!subject.input.value.trim() || !code.value.trim() || !recipientList(to.input.value).length) return showCrmNotice('Gmail composer', 'Add at least one recipient, a subject, and HTML before sending.');
@@ -424,7 +464,7 @@ window.openGmailComposer = function openGmailComposer() {
     catch (error) { status.textContent = error.message || 'Gmail could not send this email.'; }
     finally { setBusy(send, false); }
   };
-  box.append(title, form, editorRow, actions); wrap.append(box); document.body.append(wrap); return wrap;
+  box.append(title, form, editorRow, actions); wrap.append(box); document.body.append(wrap); void loadTemplates(); return wrap;
 };
 function openCrmEditor(collection, id = null, seed = {}) {
   const label = crmKindLabels[collection] || 'CRM record';

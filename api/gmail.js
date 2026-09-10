@@ -212,6 +212,18 @@ async function gmailStatus(root, configured) {
   return { ok: true, configured, connected: Boolean(privateData.refreshToken), email: privateData.email || integration.email || '', status: privateData.refreshToken ? 'Connected' : 'Needs setup' };
 }
 
+function gmailTemplate(template) {
+  const data = template.data() || {};
+  return {
+    id: template.id,
+    name: typeof data.name === 'string' ? data.name : 'Untitled template',
+    subject: typeof data.subject === 'string' ? data.subject : '',
+    html: typeof data.html === 'string' ? data.html : '',
+    plainText: typeof data.plainText === 'string' ? data.plainText : '',
+    model: typeof data.model === 'string' ? data.model : ''
+  };
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method === 'GET') return handleOAuthCallback(req, res);
@@ -224,7 +236,8 @@ export default async function handler(req, res) {
     if (!command.action.startsWith('gmail')) throw new InputError('Gmail action required.');
     const { auth, db, FieldValue } = await services();
     const user = await auth.verifyIdToken(token, true);
-    const root = await workspace(db, user.uid, command.orgId, command.action !== 'gmailStatus');
+    const readOnlyAction = command.action === 'gmailStatus' || command.action === 'gmailTemplateList';
+    const root = await workspace(db, user.uid, command.orgId, !readOnlyAction);
     if (command.action === 'gmailStatus') {
       let configured = true;
       try { oauthConfig(); } catch { configured = false; }
@@ -241,6 +254,19 @@ export default async function handler(req, res) {
         root.collection('integrations').doc('gmail').set({ provider: 'gmail', status: 'Disconnected', email: '', notes: 'Connect Gmail to send HTML email.', updatedAt: FieldValue.serverTimestamp() }, { merge: true })
       ]);
       return res.status(200).json({ ok: true, connected: false });
+    }
+    if (command.action === 'gmailTemplateList') {
+      const templates = await root.collection('emailTemplates').orderBy('updatedAt', 'desc').limit(50).get();
+      return res.status(200).json({ ok: true, templates: templates.docs.map(gmailTemplate) });
+    }
+    if (command.action === 'gmailTemplateSave') {
+      const ref = command.id ? root.collection('emailTemplates').doc(command.id) : root.collection('emailTemplates').doc();
+      await ref.set({ name: command.name, subject: command.subject, html: command.html, plainText: command.plainText, model: command.model, updatedAt: FieldValue.serverTimestamp(), ...(command.id ? {} : { createdAt: FieldValue.serverTimestamp() }) }, { merge: true });
+      return res.status(200).json({ ok: true, template: { id: ref.id, name: command.name, subject: command.subject, html: command.html, plainText: command.plainText, model: command.model } });
+    }
+    if (command.action === 'gmailTemplateDelete') {
+      await root.collection('emailTemplates').doc(command.id).delete();
+      return res.status(200).json({ ok: true, id: command.id });
     }
     if (command.action === 'gmailGenerate') {
       const instructions = [

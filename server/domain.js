@@ -99,6 +99,25 @@ export function parseCommand(body) {
   if (body.action === 'gmailConnect' || body.action === 'gmailStatus' || body.action === 'gmailDisconnect') {
     return { action: body.action, orgId: body.orgId == null ? null : organizationId(body.orgId) };
   }
+  if (body.action === 'gmailTemplateList') {
+    return { action: body.action, orgId: body.orgId == null ? null : organizationId(body.orgId) };
+  }
+  if (body.action === 'gmailTemplateSave') {
+    const id = body.id == null ? null : text(body.id, 'Identificador', 80);
+    if (id && !/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw new InputError('Identificador inválido.');
+    const name = text(body.name, 'Nombre de plantilla', 120);
+    const subject = text(body.subject, 'Asunto', 200);
+    if (/\r|\n/.test(subject)) throw new InputError('Asunto inválido.');
+    const plainText = body.plainText == null ? '' : text(body.plainText, 'Texto del correo', 20000);
+    const model = body.model == null ? '' : text(body.model, 'Modelo OpenAI', 80);
+    if (model && !isAllowedOpenAIModel(model)) throw new InputError('Modelo OpenAI no permitido.');
+    return { action: body.action, id, name, subject, html: emailHtml(body.html), plainText, model, orgId: body.orgId == null ? null : organizationId(body.orgId) };
+  }
+  if (body.action === 'gmailTemplateDelete') {
+    const id = text(body.id, 'Identificador', 80);
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw new InputError('Identificador inválido.');
+    return { action: body.action, id, orgId: body.orgId == null ? null : organizationId(body.orgId) };
+  }
   if (body.action === 'gmailGenerate') {
     const prompt = text(body.prompt, 'Instrucciones del correo', 5000);
     const model = body.model == null ? null : text(body.model, 'Modelo OpenAI', 80);

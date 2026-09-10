@@ -435,10 +435,11 @@ No uses una Web API Key de Firebase ni una API key de OpenAI en esas variables. 
 1. Pulsa **Compose email** en la tarjeta Gmail.
 2. Describe el objetivo, tono, idioma, destinatario y llamada a la acción en **AI email prompt**.
 3. Revisa el asunto, el código HTML y la vista previa lado a lado. Puedes cambiar el HTML antes de enviar.
-4. Añade hasta 50 destinatarios entre `To`, `CC` y `BCC`; separa correos con coma, punto y coma o salto de línea.
-5. Pulsa **Send with Gmail** y confirma el envío.
+4. Si quieres reutilizarlo, escribe un nombre y pulsa **Save HTML as template**. Las plantillas quedan aisladas por espacio de trabajo, se pueden cargar desde **Saved HTML templates** y borrar con el icono de papelera.
+5. Añade hasta 50 destinatarios entre `To`, `CC` y `BCC`; separa correos con coma, punto y coma o salto de línea.
+6. Pulsa **Send with Gmail** y confirma el envío.
 
-El servidor rechaza scripts, iframes, formularios, URLs `javascript:` o `data:`, asuntos con saltos de línea y destinatarios repetidos. El historial guarda solo metadatos mínimos del envío en `runs`; no guarda el HTML ni tokens OAuth. **Disconnect** elimina de Automa el token de Gmail de ese espacio. El restablecimiento local o global también elimina `private/gmail`.
+El servidor rechaza scripts, iframes, formularios, URLs `javascript:` o `data:`, asuntos con saltos de línea y destinatarios repetidos. El historial guarda solo metadatos mínimos del envío en `runs`; no guarda el HTML ni tokens OAuth. Las plantillas guardan el HTML, el asunto y el modelo para volver a usarlos. **Disconnect** elimina de Automa el token de Gmail de ese espacio. El restablecimiento local o global también elimina las plantillas y `private/gmail`.
 
 ## 8. Pruebas y verificación
 
