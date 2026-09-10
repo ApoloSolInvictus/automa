@@ -258,6 +258,22 @@ a {
   min-width: 0;
   max-width: 100%;
 }
+@media (min-width: 992px) {
+  #nbar .container > .d-flex {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+  }
+  #nbar .container > .d-flex > a:first-child {
+    justify-self: start;
+  }
+  #nbar .landing-nav-links {
+    justify-self: center;
+  }
+  #nbar .container > .d-flex > div:last-child {
+    justify-self: end;
+  }
+}
 .lm #nbar {
   background: rgba(250, 250, 254, 0.88);
 }
