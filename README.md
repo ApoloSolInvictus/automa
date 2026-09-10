@@ -368,13 +368,13 @@ En **Project settings → Environment Variables**, agrega estas variables en Pro
 ```env
 TELEGRAM_BOT_TOKEN=                         # token que entrega @BotFather
 TELEGRAM_WEBHOOK_SECRET=                    # secreto nuevo, aleatorio; sólo A-Z a-z 0-9 _ -
-TELEGRAM_OWNER_UID=                         # opcional: UID autorizado para el restablecimiento global
+TELEGRAM_OWNER_UID=                         # UID del propietario; necesario para el enlace personal y el restablecimiento global
 TELEGRAM_AGENT_ID=support-bot-v2-1
 TELEGRAM_BOT_USERNAME=WSTUDIO3DBot
 TELEGRAM_WEBHOOK_URL=https://automa.wstudio3d.com/api/telegram
 ```
 
-Marca `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como secretos. Telegram sólo acepta para `TELEGRAM_WEBHOOK_SECRET` entre 1 y 256 caracteres de `A-Z`, `a-z`, `0-9`, `_` o `-`; no uses espacios, puntos, comillas, `/`, `+` ni `=`. No los guardes en Firestore, `.env.example`, GitHub ni en el navegador. `TELEGRAM_OWNER_UID` ya no decide qué cliente recibe un mensaje; es opcional y sólo sirve para el restablecimiento global y diagnósticos de la cuenta personal. `TELEGRAM_BOT_USERNAME` sólo se usa para construir los enlaces de vinculación. `TELEGRAM_AGENT_ID` es el agente de respaldo; cada espacio puede seleccionar otro agente desde Configure Telegram.
+Marca `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como secretos. Telegram sólo acepta para `TELEGRAM_WEBHOOK_SECRET` entre 1 y 256 caracteres de `A-Z`, `a-z`, `0-9`, `_` o `-`; no uses espacios, puntos, comillas, `/`, `+` ni `=`. No los guardes en Firestore, `.env.example`, GitHub ni en el navegador. `TELEGRAM_OWNER_UID` no decide qué cliente recibe un mensaje; autoriza el enlace personal del propietario, el restablecimiento global y los diagnósticos de la cuenta personal. `TELEGRAM_BOT_USERNAME` sólo se usa para construir los enlaces de vinculación. `TELEGRAM_AGENT_ID` es el agente de respaldo; cada espacio puede seleccionar otro agente desde Configure Telegram.
 
 ### 6.2 Registrar el webhook
 
