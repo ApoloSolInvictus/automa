@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import chatHandler, { classifyOpenAIFailure, extractResponseText } from '../api/chat.js';
+import chatHandler, { classifyOpenAIFailure, extractResponseText, requestOpenAI } from '../api/chat.js';
 
 function response() {
   return {
@@ -74,4 +74,14 @@ test('distinguishes OpenAI authentication, quota, rate and model failures', () =
   assert.equal(classifyOpenAIFailure(429, { error: { code: 'insufficient_quota' } }).code, 'insufficient_quota');
   assert.equal(classifyOpenAIFailure(429, { error: { code: 'rate_limit_exceeded' } }).code, 'rate_limit_exceeded');
   assert.equal(classifyOpenAIFailure(404, { error: { code: 'model_not_found' } }).code, 'model_not_found');
+});
+test('passes a requested structured output format to the Responses API', async () => {
+ const originalFetch = globalThis.fetch; const originalOpenAIKey = process.env.OPENAI_API_KEY;
+ process.env.OPENAI_API_KEY = 'openai-test-key'; let body;
+ globalThis.fetch = async (_url, options) => { body = JSON.parse(options.body); return new Response(JSON.stringify({ output_text: '{"subject":"Hello"}' }), { status: 200, headers: { 'Content-Type': 'application/json' } }); };
+ try {
+  const format = { type:'json_schema', name:'draft', strict:true, schema:{ type:'object', properties:{ subject:{ type:'string' } }, required:['subject'], additionalProperties:false } };
+  const result = await requestOpenAI({ message:'Draft an email', history:[] }, { model:'gpt-5.6-terra', textFormat:format });
+  assert.equal(result.status, 200); assert.deepEqual(body.text.format, format);
+ } finally { globalThis.fetch = originalFetch; if (originalOpenAIKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = originalOpenAIKey; }
 });

@@ -75,6 +75,7 @@ export async function requestOpenAI(command, options = {}) {
   if (!apiKey) return { status: 503, body: { error: 'OpenAI is not configured in Vercel.', code: 'openai_key_missing' } };
   if (!isAllowedOpenAIModel(model)) return { status: 503, body: { error: 'The configured OpenAI model is not in the supported agent catalog.', code: 'openai_model_invalid' } };
   const instructions = cleanEnv(options.instructions) || systemInstructions;
+  const textFormat = options.textFormat && typeof options.textFormat === 'object' && !Array.isArray(options.textFormat) ? options.textFormat : null;
 
   let response;
   try {
@@ -89,6 +90,7 @@ export async function requestOpenAI(command, options = {}) {
         store: false,
         max_output_tokens: maxOutputTokens,
         instructions,
+        ...(textFormat ? { text: { format: textFormat } } : {}),
         input: [...command.history, { role: 'user', content: command.message }]
       }),
       signal: AbortSignal.timeout(22000)
@@ -104,6 +106,8 @@ export async function requestOpenAI(command, options = {}) {
     console.error('OpenAI request rejected', { status: response.status, code: failure.code });
     return { status: failure.status, body: { error: failure.error, code: failure.code } };
   }
+
+  if (payload?.status === 'incomplete') return { status: 502, body: { error: 'OpenAI stopped before completing the response. Please try again.', code: 'openai_incomplete_response' } };
 
   const reply = extractResponseText(payload);
   if (!reply) return { status: 502, body: { error: 'OpenAI returned an empty response. Please try again.', code: 'openai_empty_response' } };

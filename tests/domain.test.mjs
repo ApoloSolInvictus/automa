@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isAllowedTelegramWebhookSecret, isAllowedTelegramWebhookUrl, parseCommand, planFollowUp } from '../server/domain.js';
 import handler from '../api/business.js';
-import gmailHandler, { createRawEmail, htmlToPlainText } from '../api/gmail.js';
+import gmailHandler, { createRawEmail, htmlToPlainText, safeGeneratedEmail } from '../api/gmail.js';
 const lead = { action: 'createLead', name: ' Cliente ', email: ' TEST@example.com ', value: 50, requestId: 'aabbbbbb-1111-4111-8111-111111111111' };
 test('normalizes lead without trusting supplied user identity', () => {
  const parsed = parseCommand({ ...lead, uid: 'victim' });
@@ -107,6 +107,11 @@ test('validates Gmail compose actions and creates an RFC 2822 raw message', () =
  assert.throws(() => parseCommand({ action:'gmailSend', to:['client@example.com','client@example.com'], subject:'Hello', html:'<p>Hello</p>' }));
  assert.throws(() => parseCommand({ action:'gmailSend', to:['client@example.com'], subject:'Hello', html:'<script>alert(1)</script>' }));
  assert.throws(() => parseCommand({ action:'gmailGenerate', prompt:'x', model:'claude-3' }));
+});
+test('normalizes safe HTML drafts returned by OpenAI', () => {
+ const draft = safeGeneratedEmail('```json\n{"subject":"Welcome to Automa","html":"<!doctype html><html><head><meta charset=\\"utf-8\\"></head><body><p>Welcome</p></body></html>","text":"Welcome"}\n```');
+ assert.equal(draft.subject, 'Welcome to Automa'); assert.doesNotMatch(draft.html, /<meta/i); assert.match(draft.html, /Welcome/);
+ assert.throws(() => safeGeneratedEmail('{"subject":"Unsafe","html":"<script>alert(1)</script>","text":"Unsafe"}'));
 });
 test('validates reusable Gmail HTML templates', () => {
  const saved = parseCommand({ action:'gmailTemplateSave', id:'welcome_1', name:' Automa welcome ', subject:'Welcome to Automa', html:'<p>Hello <strong>customer</strong></p>', model:'gpt-5.6-terra', orgId:'acme_ops' });

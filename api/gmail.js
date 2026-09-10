@@ -126,16 +126,36 @@ async function workspace(db, uid, orgId, requireWrite = true) {
   return root;
 }
 
-function safeGeneratedEmail(value) {
+const EMAIL_DRAFT_FORMAT = Object.freeze({
+  type: 'json_schema',
+  name: 'automa_email_draft',
+  description: 'A complete, safe HTML email draft for Automa.',
+  strict: true,
+  schema: {
+    type: 'object',
+    properties: { subject: { type: 'string' }, html: { type: 'string' }, text: { type: 'string' } },
+    required: ['subject', 'html', 'text'],
+    additionalProperties: false
+  }
+});
+
+function cleanGeneratedHtml(value) {
+  const html = String(value || '').trim().replace(/<meta\b[^>]*>/gi, '').replace(/<link\b[^>]*>/gi, '');
+  if (!html || !/<[a-z][\s\S]*>/i.test(html) || /<\/?(?:script|iframe|object|embed|form|base)\b/i.test(html) || /\son[a-z]+\s*=/i.test(html) || /(?:javascript|data)\s*:/i.test(html) || /url\s*\(/i.test(html)) throw new InputError('OpenAI returned an unsafe or incomplete email draft. Please generate it again.');
+  return html;
+}
+
+export function safeGeneratedEmail(value) {
   const source = String(value || '').trim();
-  const json = source.match(/\{[\s\S]*\}/)?.[0] || source;
+  const fenced = source.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+  const json = (fenced || source).match(/\{[\s\S]*\}/)?.[0] || fenced || source;
   let draft;
   try { draft = JSON.parse(json); }
   catch { throw new InputError('OpenAI did not return a valid email draft. Try a more specific prompt.'); }
   const subject = typeof draft.subject === 'string' ? draft.subject.trim() : '';
-  const html = typeof draft.html === 'string' ? draft.html.trim() : '';
+  const html = cleanGeneratedHtml(draft.html);
   const plainText = typeof draft.text === 'string' ? draft.text.trim() : '';
-  if (!subject || subject.length > 200 || /[\r\n]/.test(subject) || !html || html.length > 60000 || /<\/?(?:script|iframe|object|embed|form|base|meta|link)\b/i.test(html) || /\son[a-z]+\s*=/i.test(html) || /(?:javascript|data)\s*:/i.test(html)) throw new InputError('OpenAI returned an unsafe or incomplete email draft.');
+  if (!subject || subject.length > 200 || /[\r\n]/.test(subject) || html.length > 60000) throw new InputError('OpenAI returned an unsafe or incomplete email draft. Please generate it again.');
   return { subject, html, plainText: plainText.slice(0, 20000) };
 }
 
@@ -271,11 +291,11 @@ export default async function handler(req, res) {
     if (command.action === 'gmailGenerate') {
       const instructions = [
         'You create professional HTML email drafts for Automa by W Studio 3D.',
-        'Return only valid JSON with exactly these string keys: subject, html, text.',
-        'html must be a complete email-safe HTML document using inline CSS only. Never use scripts, forms, iframes, external assets, tracking pixels, javascript URLs, or unprovided links.',
+        'Return the structured email draft requested by the response format.',
+        'html must be a complete, compact email-safe HTML document using inline CSS only. Keep HTML below 25000 characters. Never use meta or link tags, scripts, forms, iframes, style tags, external assets, tracking pixels, CSS url() values, javascript URLs, data URLs, or unprovided links.',
         'text must be a concise plain-text equivalent. Do not claim that the email was sent. Use the requested language and only facts given by the user.'
       ].join(' ');
-      const result = await requestOpenAI({ message: command.prompt, history: [] }, { model: command.model || DEFAULT_OPENAI_MODEL, instructions, maxOutputTokens: 2000 });
+      const result = await requestOpenAI({ message: command.prompt, history: [] }, { model: command.model || DEFAULT_OPENAI_MODEL, instructions, textFormat: EMAIL_DRAFT_FORMAT, maxOutputTokens: 4000 });
       if (result.status !== 200) return res.status(result.status).json(result.body);
       return res.status(200).json({ ok: true, ...safeGeneratedEmail(result.body.reply), model: result.body.model });
     }
