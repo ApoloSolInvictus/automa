@@ -816,6 +816,12 @@ function wireWorkspace() {
     telegramRegisterButton.disabled = true;
     try {
       const result = await callBusiness({ action: 'telegramRegister', ...workspacePayload() });
+      if (result.ok) {
+        telegramIntegration = { ...telegramIntegration, status: result.status || 'Active', webhookUrl: result.webhookUrl || telegramIntegration.webhookUrl };
+        const card = telegramRegisterButton.closest('[data-integration-id]');
+        if (card) card.dataset.integrationStatus = telegramIntegration.status;
+        section('integrations')?.querySelector('[data-telegram-status-label]')?.replaceChildren(document.createTextNode(telegramIntegration.status));
+      }
       showCrmNotice('Telegram webhook', result.ok ? `Webhook registered at ${result.webhookUrl}. Open @WSTUDIO3DBot and press START BOT.` : `Telegram setup failed: ${result.code}`);
     } catch (error) { showCrmNotice('Telegram webhook', error.message || 'Telegram could not register the webhook.'); }
     finally { telegramRegisterButton.disabled = false; }
