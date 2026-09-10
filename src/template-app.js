@@ -16,8 +16,9 @@ const config = {
 };
 let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {}, gmailIntegration = {};
 const crmState = { companies: [], contacts: [], opportunities: [], activities: [] };
+const DEFAULT_WORKSPACE_COLOR = '#0b2a4a';
 let currentUser = null;
-let workspace = { id: null, name: 'Personal workspace', role: 'owner', members: [], pendingInvites: [] };
+let workspace = { id: null, name: 'Personal workspace', color: DEFAULT_WORKSPACE_COLOR, role: 'owner', members: [], pendingInvites: [] };
 let workspaceOptions = [workspace];
 
 const $ = id => document.getElementById(id);
@@ -214,19 +215,41 @@ async function callGmail(body) {
   const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'Gmail request failed.'); return data;
 }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character])); }
+function normalizedWorkspaceColor(value) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : DEFAULT_WORKSPACE_COLOR;
+}
+function hexToRgba(value, alpha = 0.16) {
+  const color = normalizedWorkspaceColor(value).slice(1);
+  const channel = index => parseInt(color.slice(index, index + 2), 16);
+  return `rgba(${channel(0)}, ${channel(2)}, ${channel(4)}, ${alpha})`;
+}
+function createModalShell(width = 'min(520px,100%)', zIndex = 3000) {
+  const wrap = document.createElement('div');
+  wrap.className = 'automa-modal-overlay';
+  wrap.style.zIndex = zIndex;
+  const box = document.createElement('div');
+  box.className = 'automa-modal-card';
+  box.style.width = width;
+  const close = () => { document.removeEventListener('keydown', onKey); wrap.remove(); };
+  const onKey = event => { if (event.key === 'Escape') close(); };
+  wrap.addEventListener('click', event => { if (event.target === wrap) close(); });
+  document.addEventListener('keydown', onKey);
+  return { wrap, box, close };
+}
 function modal(title, fields, onSave) {
-  const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#0009;z-index:3000;display:grid;place-items:center;padding:20px';
-  const box = document.createElement('div'); box.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:24px;width:min(520px,100%)';
+  const { wrap, box, close } = createModalShell('min(520px,100%)');
   const controls = fields.map(f => {
     if (f.type === 'note') return `<div class="mb-3 p-3" style="background:var(--bg3);border:1px solid var(--bd);border-radius:10px;color:var(--tx2);font-size:.8rem;line-height:1.5">${escapeHtml(f.value || '')}</div>`;
     const label = `<label class="olbl">${escapeHtml(f.label)}</label>`;
     if (f.type === 'select') return `${label}<select class="oinp mb-3" data-field="${escapeHtml(f.key)}">${f.options.map(option => `<option value="${escapeHtml(option.value)}" ${option.value === f.value ? 'selected' : ''}>${escapeHtml(option.label)}${option.description ? ` — ${escapeHtml(option.description)}` : ''}</option>`).join('')}</select>`;
     if (f.type === 'textarea') return `${label}<textarea class="oinp mb-3" data-field="${escapeHtml(f.key)}" rows="${f.rows || 4}" placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(f.value || '')}</textarea>`;
+    if (f.type === 'color') return `${label}<div class="workspace-color-field mb-3"><input type="color" data-field="${escapeHtml(f.key)}" value="${escapeHtml(normalizedWorkspaceColor(f.value))}" aria-label="${escapeHtml(f.label)}"><span>${escapeHtml(f.help || 'Choose the color shown in the workspace switcher.')}</span></div>`;
     const inputType = ['url', 'email', 'date', 'number', 'tel'].includes(f.type) ? f.type : 'text';
     return `${label}<input type="${inputType}" class="oinp mb-3" data-field="${escapeHtml(f.key)}" value="${escapeHtml(f.value || '')}" placeholder="${escapeHtml(f.placeholder || '')}"${f.readonly ? ' readonly' : ''}>`;
   }).join('');
-  box.innerHTML = `<h4 style="margin-bottom:18px">${escapeHtml(title)}</h4>${controls}<div class="d-flex gap-2 justify-content-end"><button class="boc btn" data-cancel>Cancel</button><button class="bgrd btn" data-save>Save</button></div>`;
-  wrap.append(box); document.body.append(wrap); box.querySelector('[data-cancel]').onclick = () => wrap.remove(); box.querySelector('[data-save]').onclick = async () => { const data = {}; box.querySelectorAll('[data-field]').forEach(i => data[i.dataset.field] = i.value.trim()); try { await onSave(data); wrap.remove(); } catch (e) { alert(e.message); } }; return wrap;
+  box.innerHTML = `<div class="automa-modal-head"><h4>${escapeHtml(title)}</h4><button type="button" class="automa-modal-close" data-modal-close aria-label="Close" title="Close">&times;</button></div>${controls}<div class="d-flex gap-2 justify-content-end"><button class="boc btn" data-cancel>Cancel</button><button class="bgrd btn" data-save>Save</button></div>`;
+  wrap.append(box); document.body.append(wrap); box.querySelector('[data-modal-close]').onclick = close; box.querySelector('[data-cancel]').onclick = close; box.querySelector('[data-save]').onclick = async () => { const data = {}; box.querySelectorAll('[data-field]').forEach(i => data[i.dataset.field] = i.value.trim()); try { await onSave(data); close(); } catch (e) { showCrmNotice(title, e.message || 'The request could not be completed.'); } }; return wrap;
 }
 const modelFields = (value = DEFAULT_OPENAI_MODEL) => [{ key: 'model', label: 'OpenAI model', type: 'select', value, options: OPENAI_MODELS }];
 const telegramAgentOptions = Object.entries(DEFAULT_AGENTS).map(([value, agent]) => ({ value, label: `${agent.name} · ${modelLabel(agent.model)}` }));
@@ -255,11 +278,11 @@ function openAgentEditor(agent = {}, id = null) {
 }
 function openAgentTest(agent = {}, id) {
   const seed = { ...(id ? getDefaultAgent(id) || {} : {}), ...agent };
-  if (!id) return alert('Save this agent before running a test.');
+  if (!id) return showCrmNotice('Agent test', 'Save this agent before running a test.');
   return modal(`Test ${seed.name || 'Agent'}`, [{ key: 'message', label: 'Test message', type: 'textarea', rows: 4, placeholder: 'Ask this agent to help with a business task.' }], async data => {
     if (!auth.currentUser) throw new Error('Your session expired. Please sign in again.');
     const result = await callBusiness({ action: 'runAgent', ...workspacePayload(), agentId: id, message: data.message, history: [] });
-    alert(`${result.agent || seed.name} · ${modelLabel(result.model || seed.model)}\n\n${result.reply || 'No response.'}`);
+    showCrmNotice(`${result.agent || seed.name} · ${modelLabel(result.model || seed.model)}`, result.reply || 'No response.');
   });
 }
 const AUTOMATION_BLUEPRINTS = Object.freeze({
@@ -368,10 +391,9 @@ function crmFields(collection, seed = {}) {
   ];
 }
 function showCrmNotice(title, message) {
-  const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#0009;z-index:3000;display:grid;place-items:center;padding:20px';
-  const box = document.createElement('div'); box.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:24px;width:min(620px,100%);max-height:80vh;overflow:auto';
-  box.innerHTML = `<h4 style="margin-bottom:14px">${escapeHtml(title)}</h4><div style="white-space:pre-wrap;color:var(--tx2);font-size:.85rem;line-height:1.65">${escapeHtml(message)}</div><div class="d-flex justify-content-end mt-4"><button class="bgrd btn" data-close>Close</button></div>`;
-  wrap.append(box); document.body.append(wrap); box.querySelector('[data-close]').onclick = () => wrap.remove(); return wrap;
+  const { wrap, box, close } = createModalShell('min(620px,100%)');
+  box.innerHTML = `<div class="automa-modal-head"><h4>${escapeHtml(title)}</h4><button type="button" class="automa-modal-close" data-modal-close aria-label="Close" title="Close">&times;</button></div><div style="white-space:pre-wrap;color:var(--tx2);font-size:.85rem;line-height:1.65">${escapeHtml(message)}</div><div class="d-flex justify-content-end mt-4"><button class="bgrd btn" data-close>Close</button></div>`;
+  wrap.append(box); document.body.append(wrap); box.querySelector('[data-modal-close]').onclick = close; box.querySelector('[data-close]').onclick = close; return wrap;
 }
 function updateGmailUi(status = {}) {
   const connected = Boolean(status.connected);
@@ -393,11 +415,10 @@ function previewEmail(frame, html) {
 }
 window.openGmailInboxReview = function openGmailInboxReview() {
   if (!currentUser) return showCrmNotice('Gmail inbox review', 'Sign in and connect Gmail before reviewing messages.');
-  const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#000b;z-index:3100;padding:20px;overflow:auto';
-  const box = document.createElement('div'); box.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:18px;padding:24px;width:min(1080px,100%);margin:20px auto;max-height:calc(100vh - 80px);overflow:auto';
+  const { wrap, box, close: closeModal } = createModalShell('min(1080px,100%)', 3100);
   const heading = document.createElement('div'); heading.className = 'd-flex align-items-start justify-content-between gap-3 mb-3';
   const headingText = document.createElement('div'); headingText.innerHTML = '<h4 style="margin:0 0 5px">AI Gmail Inbox Review</h4><div style="font-size:.82rem;color:var(--tx3)">OpenAI reviews up to 20 recent inbox messages, summarizes them, flags threats, and suggests saved templates for safe replies.</div>';
-  const close = document.createElement('button'); close.className = 'boc btn'; close.textContent = 'Close'; close.onclick = () => wrap.remove(); heading.append(headingText, close);
+  const close = document.createElement('button'); close.type = 'button'; close.className = 'automa-modal-close'; close.innerHTML = '&times;'; close.setAttribute('aria-label', 'Close'); close.title = 'Close'; close.onclick = closeModal; heading.append(headingText, close);
   const controls = document.createElement('div'); controls.className = 'd-flex align-items-center gap-2 flex-wrap mb-3';
   const modelLabel = document.createElement('label'); modelLabel.className = 'olbl mb-0'; modelLabel.textContent = 'Review model';
   const model = document.createElement('select'); model.className = 'oinp'; model.style.width = 'min(300px,100%)'; OPENAI_MODELS.forEach(option => { const entry = document.createElement('option'); entry.value = option.id; entry.textContent = option.label; entry.selected = option.id === DEFAULT_OPENAI_MODEL; model.append(entry); });
@@ -436,11 +457,10 @@ window.openGmailInboxReview = function openGmailInboxReview() {
 };
 window.openGmailComposer = function openGmailComposer() {
   if (!currentUser) return showCrmNotice('Gmail', 'Sign in before composing an email.');
-  const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#000b;z-index:3100;padding:20px;overflow:auto';
-  const box = document.createElement('div'); box.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:18px;padding:24px;width:min(1180px,100%);margin:20px auto';
+  const { wrap, box, close: closeModal } = createModalShell('min(1180px,100%)', 3100);
   const title = document.createElement('div'); title.className = 'd-flex align-items-start justify-content-between gap-3 mb-3';
   title.innerHTML = '<div><h4 style="margin:0 0 5px">Gmail HTML Composer</h4><div style="font-size:.82rem;color:var(--tx3)">Describe the email to OpenAI, then review the live preview and HTML before sending.</div></div>';
-  const close = document.createElement('button'); close.className = 'boc btn'; close.textContent = 'Close'; close.onclick = () => wrap.remove(); title.append(close);
+  const close = document.createElement('button'); close.type = 'button'; close.className = 'automa-modal-close'; close.innerHTML = '&times;'; close.setAttribute('aria-label', 'Close'); close.title = 'Close'; close.onclick = closeModal; title.append(close);
   const form = document.createElement('div'); form.className = 'row g-3';
   const field = (label, placeholder, value = '') => { const holder = document.createElement('div'); holder.className = 'col-md-6'; const caption = document.createElement('label'); caption.className = 'olbl'; caption.textContent = label; const input = document.createElement('input'); input.className = 'oinp'; input.placeholder = placeholder; input.value = value; holder.append(caption, input); return { holder, input }; };
   const to = field('To', 'client@example.com, team@example.com'); const cc = field('CC (optional)', 'manager@example.com'); const bcc = field('BCC (optional)', 'archive@example.com'); const subject = field('Subject', 'Generated subject appears here');
@@ -530,8 +550,14 @@ async function runCrmAssist(task) {
   finally { if (button) button.disabled = false; }
 }
 function updateWorkspaceUi() {
+  workspace.color = normalizedWorkspaceColor(workspace.color);
   const name = $('workspaceName'); if (name) name.textContent = workspace.name || 'Personal workspace';
   const role = $('workspaceRole'); if (role) role.textContent = (workspace.role || 'owner').replace(/^./, letter => letter.toUpperCase());
+  const switcher = $('workspaceBtn');
+  if (switcher) {
+    switcher.style.setProperty('--workspace-color', workspace.color);
+    switcher.style.borderColor = hexToRgba(workspace.color, 0.55);
+  }
   updateDemoControls();
 }
 function updateDemoControls() {
@@ -580,9 +606,10 @@ function stopSubscriptions() {
 window.openOrganizationEditor = function openOrganizationEditor() {
   return modal('Create organization', [
     { type: 'note', value: 'Create a separate workspace for a company or business unit. Members, CRM records, agents and automations stay isolated from your personal workspace and other organizations.' },
-    { key: 'name', label: 'Organization name', placeholder: 'Acme Operations' }
+    { key: 'name', label: 'Organization name', placeholder: 'Acme Operations' },
+    { key: 'color', label: 'Workspace color', type: 'color', value: DEFAULT_WORKSPACE_COLOR, help: 'This color appears in the dashboard workspace switcher.' }
   ], async data => {
-    const result = await callBusiness({ action: 'organizationCreate', name: data.name });
+    const result = await callBusiness({ action: 'organizationCreate', name: data.name, color: data.color });
     await loadWorkspaces(currentUser, result.organization?.id);
   });
 };
@@ -599,22 +626,29 @@ window.openOrganizationInvite = function openOrganizationInvite() {
 };
 window.openWorkspaceManager = function openWorkspaceManager() {
   if (!currentUser) return;
-  const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#0009;z-index:3000;display:grid;place-items:center;padding:20px';
-  const box = document.createElement('div'); box.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:16px;padding:24px;width:min(560px,100%);max-height:82vh;overflow:auto';
+  const { wrap, box, close: closeModal } = createModalShell('min(560px,100%)');
   const render = () => {
     box.replaceChildren();
-    const title = document.createElement('h4'); title.style.marginBottom = '6px'; title.textContent = 'Workspaces';
+    const head = document.createElement('div'); head.className = 'automa-modal-head';
+    const title = document.createElement('h4'); title.textContent = 'Workspaces';
+    const closeButton = document.createElement('button'); closeButton.type = 'button'; closeButton.className = 'automa-modal-close'; closeButton.innerHTML = '&times;'; closeButton.setAttribute('aria-label', 'Close'); closeButton.title = 'Close'; closeButton.onclick = closeModal;
+    head.append(title, closeButton);
     const intro = document.createElement('p'); intro.style.cssText = 'font-size:.8rem;color:var(--tx3);margin-bottom:18px'; intro.textContent = 'Switch between your personal workspace and organizations shared with your team.';
-    box.append(title, intro);
+    box.append(head, intro);
     const list = document.createElement('div'); list.className = 'd-grid gap-2';
     workspaceOptions.forEach(option => {
       const row = document.createElement('div'); row.className = 'workspace-option';
-      const info = document.createElement('div'); info.style.minWidth = '0';
-      const name = document.createElement('strong'); name.textContent = option.name; const meta = document.createElement('small'); meta.textContent = `${option.role === 'owner' ? 'Owner' : option.role} · ${option.members?.length || 1} member${option.members?.length === 1 ? '' : 's'}`; info.append(name, meta);
-      const select = document.createElement('button'); select.className = option.id === workspace.id ? 'bgrd btn py-1 px-2' : 'boc btn py-1 px-2'; select.style.fontSize = '.72rem'; select.textContent = option.id === workspace.id ? 'Current' : 'Open'; select.disabled = option.id === workspace.id; select.addEventListener('click', async () => { workspace = option; updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(currentUser); wrap.remove(); }); row.append(info, select); list.append(row);
+      const color = normalizedWorkspaceColor(option.color);
+      const info = document.createElement('div'); info.className = 'workspace-option-info';
+      const swatch = document.createElement('span'); swatch.className = 'workspace-color-swatch'; swatch.style.background = color;
+      const detail = document.createElement('div'); detail.style.minWidth = '0';
+      const name = document.createElement('strong'); name.textContent = option.name;
+      const meta = document.createElement('small'); const roleLabel = (option.role || 'owner').replace(/^./, letter => letter.toUpperCase()); meta.textContent = `${roleLabel} · ${option.members?.length || 1} member${option.members?.length === 1 ? '' : 's'}`;
+      detail.append(name, meta); info.append(swatch, detail);
+      const select = document.createElement('button'); select.className = option.id === workspace.id ? 'bgrd btn py-1 px-2' : 'boc btn py-1 px-2'; select.style.fontSize = '.72rem'; select.textContent = option.id === workspace.id ? 'Current' : 'Open'; select.disabled = option.id === workspace.id; select.addEventListener('click', async () => { workspace = { ...option, color }; updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(currentUser); closeModal(); }); row.append(info, select); list.append(row);
     });
     box.append(list);
-    const selected = document.createElement('div'); selected.className = 'workspace-selected mt-3'; selected.innerHTML = `<strong>${escapeHtml(workspace.name)}</strong><span>${escapeHtml(workspace.members?.length ? `${workspace.members.length} member${workspace.members.length === 1 ? '' : 's'} · ${workspace.pendingInvites?.length || 0} pending invitations` : 'Personal workspace data')}</span>`; box.append(selected);
+    const selected = document.createElement('div'); selected.className = 'workspace-selected mt-3'; selected.style.borderColor = hexToRgba(workspace.color, 0.65); selected.style.background = `linear-gradient(135deg, ${hexToRgba(workspace.color, 0.18)}, rgba(139, 92, 246, 0.06))`; selected.innerHTML = `<strong>${escapeHtml(workspace.name)}</strong><span>${escapeHtml(workspace.members?.length ? `${workspace.members.length} member${workspace.members.length === 1 ? '' : 's'} · ${workspace.pendingInvites?.length || 0} pending invitations` : 'Personal workspace data')}</span>`; box.append(selected);
     if (workspace.id && workspace.members?.length) {
       const members = document.createElement('div'); members.className = 'workspace-members mt-3';
       workspace.members.slice(0, 20).forEach(member => {
@@ -626,10 +660,10 @@ window.openWorkspaceManager = function openWorkspaceManager() {
       box.append(members);
     }
     const actions = document.createElement('div'); actions.className = 'd-flex gap-2 justify-content-end mt-4 flex-wrap';
-    const invite = document.createElement('button'); invite.className = 'boc btn'; invite.textContent = 'Invite member'; invite.disabled = !workspace.id || !['owner', 'admin'].includes(workspace.role); invite.addEventListener('click', () => { wrap.remove(); window.openOrganizationInvite(); });
-    const create = document.createElement('button'); create.className = 'bgrd btn'; create.textContent = 'Create organization'; create.addEventListener('click', () => { wrap.remove(); window.openOrganizationEditor(); });
-    const globalReset = document.createElement('button'); globalReset.className = 'boc btn'; globalReset.style.color = '#f87171'; globalReset.textContent = 'Borrar todos los perfiles'; globalReset.disabled = workspace.role !== 'owner'; globalReset.addEventListener('click', () => { wrap.remove(); window.openGlobalReset(); });
-    const close = document.createElement('button'); close.className = 'boc btn'; close.textContent = 'Close'; close.addEventListener('click', () => wrap.remove()); actions.append(invite, create, globalReset, close); box.append(actions);
+    const invite = document.createElement('button'); invite.className = 'boc btn'; invite.textContent = 'Invite member'; invite.disabled = !workspace.id || !['owner', 'admin'].includes(workspace.role); invite.addEventListener('click', () => { closeModal(); window.openOrganizationInvite(); });
+    const create = document.createElement('button'); create.className = 'bgrd btn'; create.textContent = 'Create organization'; create.addEventListener('click', () => { closeModal(); window.openOrganizationEditor(); });
+    const globalReset = document.createElement('button'); globalReset.className = 'boc btn'; globalReset.style.color = '#f87171'; globalReset.textContent = 'Borrar todos los perfiles'; globalReset.disabled = workspace.role !== 'owner'; globalReset.addEventListener('click', () => { closeModal(); window.openGlobalReset(); });
+    const close = document.createElement('button'); close.className = 'boc btn'; close.textContent = 'Close'; close.addEventListener('click', closeModal); actions.append(invite, create, globalReset, close); box.append(actions);
   };
   render(); wrap.append(box); document.body.append(wrap);
 };
@@ -638,7 +672,7 @@ async function loadWorkspaces(user, requestedId = null) {
   try { await callBusiness({ action: 'organizationAccept' }); } catch (error) { console.warn('Organization invitations unavailable', error.message); }
   let organizations = [];
   try { const result = await callBusiness({ action: 'organizationList' }); organizations = result.organizations || []; } catch (error) { console.warn('Organizations unavailable', error.message); }
-  workspaceOptions = [{ id: null, name: 'Personal workspace', role: 'owner', members: [], pendingInvites: [] }, ...organizations];
+  workspaceOptions = [{ id: null, name: 'Personal workspace', color: DEFAULT_WORKSPACE_COLOR, role: 'owner', members: [], pendingInvites: [] }, ...organizations.map(option => ({ ...option, color: normalizedWorkspaceColor(option.color) }))];
   workspace = workspaceOptions.find(option => option.id === requestedId) || workspaceOptions.find(option => option.id === workspace.id) || workspaceOptions[0];
   updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(user); await loadGmailStatus();
   const gmailResult = new URLSearchParams(window.location.search).get('gmail');
@@ -659,7 +693,7 @@ function wireWorkspace() {
   $('crmSearch')?.addEventListener('input', renderCrm);
   $('crmStageFilter')?.addEventListener('change', renderCrm);
   add('integrations', 'Add Integration', [{ key: 'provider', label: 'Provider', placeholder: 'Slack, Notion, CRM...' }, { key: 'status', label: 'Status', placeholder: 'Connected' }], 'integrations');
-  const save = [...(section('settings')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Save Changes')); save?.addEventListener('click', async () => { try { await callBusiness({ action: 'saveProfile', name: $('profileName')?.value.trim() || 'Automa user' }); save.textContent = 'Saved'; setTimeout(() => save.textContent = 'Save Changes', 1500); } catch (e) { alert(e.message); } });
+  const save = [...(section('settings')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Save Changes')); save?.addEventListener('click', async () => { try { await callBusiness({ action: 'saveProfile', name: $('profileName')?.value.trim() || 'Automa user' }); save.textContent = 'Saved'; setTimeout(() => save.textContent = 'Save Changes', 1500); } catch (e) { showCrmNotice('Settings', e.message || 'The settings could not be saved.'); } });
   section('agents')?.querySelectorAll('.agent-card').forEach(card => {
     const id = card.dataset.agentId; const seed = getDefaultAgent(id) || {};
     card.querySelectorAll('button').forEach(btn => { if (btn.textContent.includes('Configure')) btn.addEventListener('click', () => openAgentEditor(seed, id)); if (btn.textContent.includes('View')) btn.addEventListener('click', () => openAgentTest(seed, id)); });
@@ -680,8 +714,8 @@ function wireWorkspace() {
       const result = await callBusiness({ action: 'telegramStatus' });
       const variableState = Object.entries(result.variables || {}).map(([name, present]) => `${name}: ${present ? 'set' : 'missing'}`).join('\n');
       const webhookState = result.webhook ? `\nWebhook URL: ${result.webhook.urlConfigured ? (result.webhook.urlMatches ? 'correct' : 'different URL') : 'not registered'}\nTarget URL: ${result.webhook.expectedUrl || 'not configured'}\nPending updates: ${result.webhook.pendingUpdates}${result.webhook.lastError ? `\nTelegram last error: ${result.webhook.lastError}` : ''}` : '';
-      alert(`${result.bot?.name || 'Telegram'}${result.bot?.username ? ` (@${result.bot.username})` : ''}\n\n${result.error || result.code}${result.ownerUidMatches === false ? '\nTELEGRAM_OWNER_UID does not match the signed-in user.' : ''}${webhookState}\n\n${variableState}`);
-    } catch (error) { alert(error.message); }
+      showCrmNotice(`${result.bot?.name || 'Telegram'}${result.bot?.username ? ` (@${result.bot.username})` : ''}`, `${result.error || result.code}${result.ownerUidMatches === false ? '\nTELEGRAM_OWNER_UID does not match the signed-in user.' : ''}${webhookState}\n\n${variableState}`);
+    } catch (error) { showCrmNotice('Telegram status', error.message || 'Telegram status could not be checked.'); }
     finally { telegramStatusButton.disabled = false; }
   });
   const telegramRegisterButton = section('integrations')?.querySelector('[data-telegram-register]');
@@ -690,8 +724,8 @@ function wireWorkspace() {
     telegramRegisterButton.disabled = true;
     try {
       const result = await callBusiness({ action: 'telegramRegister' });
-      alert(result.ok ? `Webhook registered at ${result.webhookUrl}. Open @WSTUDIO3DBot and press START BOT.` : `Telegram setup failed: ${result.code}`);
-    } catch (error) { alert(error.message); }
+      showCrmNotice('Telegram webhook', result.ok ? `Webhook registered at ${result.webhookUrl}. Open @WSTUDIO3DBot and press START BOT.` : `Telegram setup failed: ${result.code}`);
+    } catch (error) { showCrmNotice('Telegram webhook', error.message || 'Telegram could not register the webhook.'); }
     finally { telegramRegisterButton.disabled = false; }
   });
   const gmailConnectButton = section('integrations')?.querySelector('[data-gmail-connect]');
@@ -731,7 +765,7 @@ function subscribe(user) {
 
 if (Object.values(config).every(Boolean)) {
   const app = initializeApp(config); auth = getAuth(app); db = getFirestore(app);
-  onAuthStateChanged(auth, user => { stopSubscriptions(); telegramIntegration = {}; gmailIntegration = {}; resetCrmState(); currentUser = user; if (user) { window.loginSuccess?.(userShape(user)); loadWorkspaces(user); } else { generation++; workspace = { id: null, name: 'Personal workspace', role: 'owner', members: [], pendingInvites: [] }; workspaceOptions = [workspace]; updateWorkspaceUi(); updateGmailUi({ status: 'Needs setup' }); document.querySelector('#dashboard')?.style.setProperty('display', 'none'); document.querySelector('#landing')?.style.setProperty('display', 'block'); } });
+  onAuthStateChanged(auth, user => { stopSubscriptions(); telegramIntegration = {}; gmailIntegration = {}; resetCrmState(); currentUser = user; if (user) { window.loginSuccess?.(userShape(user)); loadWorkspaces(user); } else { generation++; workspace = { id: null, name: 'Personal workspace', color: DEFAULT_WORKSPACE_COLOR, role: 'owner', members: [], pendingInvites: [] }; workspaceOptions = [workspace]; updateWorkspaceUi(); updateGmailUi({ status: 'Needs setup' }); document.querySelector('#dashboard')?.style.setProperty('display', 'none'); document.querySelector('#landing')?.style.setProperty('display', 'block'); } });
   const forgot = document.querySelector('#fLogin a[href="#"]');
   forgot?.addEventListener('click', async event => { event.preventDefault(); const email = $('loginEmail')?.value.trim(); if (!email) return showError('login', 'Enter your email first.'); try { await sendPasswordResetEmail(auth, email); showError('login', 'If that account exists, a reset email has been sent.'); } catch (error) { showError('login', errorMessage(error)); } });
 } else {

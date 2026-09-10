@@ -21,7 +21,17 @@ try {
   assert.match(await page.locator('#loginErrMsg').textContent(), /Firebase is not configured/);
   assert.equal(await page.locator('#loginBtn:disabled').count(),1);
   assert.equal(await page.locator('#dashboard').isVisible(),false);
-  await page.screenshot({path:`test-results/${name}.png`,fullPage:true});
+  const landingOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  assert.ok(landingOverflow <= 1, `${name} landing should not overflow horizontally`);
+  await page.evaluate(() => {
+   document.querySelector('#landing').style.display = 'none';
+   document.querySelector('#dashboard').style.display = 'block';
+   if (window.dbNav) window.dbNav('crm', document.querySelector('[onclick*=crm]'));
+  });
+  await page.waitForTimeout(100);
+  const dashboardOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  assert.ok(dashboardOverflow <= 1, `${name} dashboard should not overflow horizontally`);
+  await page.screenshot({path:`test-results/${name}.png`,fullPage:false,timeout:60000});
  }
  await page.goto('http://127.0.0.1:4173/demo.html', { waitUntil:'domcontentloaded' });await page.getByText('DEMO VISUAL',{exact:false}).first().waitFor();
  assert.deepEqual(errors,[]);console.log('UI passed: desktop/mobile, disabled unconfigured auth, demo warning, no page errors.');

@@ -10,6 +10,12 @@ const CRM_FIELDS = Object.freeze({
 });
 const CRM_ASSIST_TASKS = ['prioritize', 'summary', 'followup'];
 const ORGANIZATION_ROLES = ['admin', 'member', 'viewer'];
+const DEFAULT_WORKSPACE_COLOR = '#0b2a4a';
+const workspaceColor = value => {
+  const color = value == null || value === '' ? DEFAULT_WORKSPACE_COLOR : text(value, 'Color de organización', 20);
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) throw new InputError('Color de organización inválido.');
+  return color.toLowerCase();
+};
 const organizationId = value => {
   const id = text(value, 'Organización', 80);
   if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw new InputError('Organización inválida.');
@@ -86,7 +92,7 @@ export function parseCommand(body) {
   if (body.action === 'organizationList' || body.action === 'organizationAccept') return { action: body.action, ...(body.orgId == null ? {} : { orgId: organizationId(body.orgId) }) };
   if (body.action === 'organizationCreate') {
     const name = text(body.name, 'Nombre de organización', 120);
-    return { action: body.action, name };
+    return { action: body.action, name, color: workspaceColor(body.color) };
   }
   if (body.action === 'seedDemo' || body.action === 'clearDemo' || body.action === 'clearWorkspace') {
     const orgId = body.orgId == null ? null : organizationId(body.orgId);

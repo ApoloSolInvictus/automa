@@ -6,6 +6,8 @@ import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 
+const DEFAULT_WORKSPACE_COLOR = '#0b2a4a';
+
 function cleanEnv(value) {
   return typeof value === 'string' ? value.trim().replace(/^(["'])(.*)\1$/s, '$2').trim() : '';
 }
@@ -123,6 +125,7 @@ async function organizationList(db, uid) {
     return {
       id: organization.id,
       name: organization.data()?.name || 'Organization',
+      color: organization.data()?.color || DEFAULT_WORKSPACE_COLOR,
       role: membership.data()?.role || 'member',
       members: members.docs.map(doc => ({ id: doc.id, ...doc.data() })),
       pendingInvites: invitations.docs.map(doc => ({ id: doc.id, ...doc.data() }))
@@ -130,17 +133,17 @@ async function organizationList(db, uid) {
   }));
   return organizations.filter(Boolean);
 }
-async function createOrganization(db, FieldValue, uid, user, name) {
+async function createOrganization(db, FieldValue, uid, user, name, color = DEFAULT_WORKSPACE_COLOR) {
   const organizationRef = db.collection('organizations').doc();
   const memberRef = organizationRef.collection('members').doc(uid);
   const membershipRef = db.collection('users').doc(uid).collection('memberships').doc(organizationRef.id);
   const stamp = FieldValue.serverTimestamp();
   const batch = db.batch();
-  batch.set(organizationRef, { name, ownerUid: uid, createdAt: stamp, updatedAt: stamp });
+  batch.set(organizationRef, { name, color, ownerUid: uid, createdAt: stamp, updatedAt: stamp });
   batch.set(memberRef, { email: user.email || '', displayName: user.name || user.email?.split('@')[0] || 'Owner', role: 'owner', status: 'active', createdAt: stamp, updatedAt: stamp });
-  batch.set(membershipRef, { organizationId: organizationRef.id, name, role: 'owner', createdAt: stamp, updatedAt: stamp });
+  batch.set(membershipRef, { organizationId: organizationRef.id, name, color, role: 'owner', createdAt: stamp, updatedAt: stamp });
   await batch.commit();
-  return { id: organizationRef.id, name, role: 'owner', members: [{ id: uid, email: user.email || '', displayName: user.name || 'Owner', role: 'owner', status: 'active' }], pendingInvites: [] };
+  return { id: organizationRef.id, name, color, role: 'owner', members: [{ id: uid, email: user.email || '', displayName: user.name || 'Owner', role: 'owner', status: 'active' }], pendingInvites: [] };
 }
 async function inviteToOrganization(db, auth, FieldValue, uid, command) {
   const access = await organizationAccess(db, command.orgId, uid);
@@ -175,9 +178,9 @@ async function acceptOrganizationInvitations(db, FieldValue, uid, email, request
     if (!org.exists) continue;
     const role = invitation.data()?.role || 'member';
     batch.set(orgRef.collection('members').doc(uid), { email, displayName: email.split('@')[0], role, status: 'active', createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    batch.set(db.collection('users').doc(uid).collection('memberships').doc(org.id), { organizationId: org.id, name: org.data()?.name || 'Organization', role, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    batch.set(db.collection('users').doc(uid).collection('memberships').doc(org.id), { organizationId: org.id, name: org.data()?.name || 'Organization', color: org.data()?.color || DEFAULT_WORKSPACE_COLOR, role, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     batch.update(invitation.ref, { status: 'accepted', acceptedBy: uid, acceptedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
-    accepted.push({ id: org.id, name: org.data()?.name || 'Organization', role });
+    accepted.push({ id: org.id, name: org.data()?.name || 'Organization', color: org.data()?.color || DEFAULT_WORKSPACE_COLOR, role });
   }
   if (accepted.length) await batch.commit();
   return accepted;
@@ -281,7 +284,7 @@ export default async function handler(req, res) {
     try { user = await auth.verifyIdToken(token, true); }
     catch { return res.status(401).json({ error: 'Sesión inválida. Vuelve a iniciar sesión.' }); }
     if (cmd.action === 'organizationList') return res.status(200).json({ ok: true, organizations: await organizationList(db, user.uid) });
-    if (cmd.action === 'organizationCreate') return res.status(201).json({ ok: true, organization: await createOrganization(db, FieldValue, user.uid, user, cmd.name) });
+    if (cmd.action === 'organizationCreate') return res.status(201).json({ ok: true, organization: await createOrganization(db, FieldValue, user.uid, user, cmd.name, cmd.color) });
     if (cmd.action === 'organizationInvite') {
       const result = await inviteToOrganization(db, auth, FieldValue, user.uid, cmd);
       return res.status(result.status).json(result.body);

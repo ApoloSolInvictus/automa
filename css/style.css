@@ -32,11 +32,15 @@
 }
 html {
   scroll-behavior: smooth;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 body {
   font-family: "Space Grotesk", sans-serif;
   background: var(--bg);
   color: var(--tx);
+  width: 100%;
+  max-width: 100%;
   overflow-x: hidden;
   transition: background 0.3s, color 0.3s;
 }
@@ -145,6 +149,83 @@ a {
   background: rgba(139, 92, 246, 0.08);
   color: var(--tx);
 }
+.automa-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: rgba(0, 0, 0, 0.68);
+}
+.automa-modal-card {
+  width: min(520px, 100%);
+  max-height: calc(100vh - 40px);
+  margin: auto 0;
+  overflow: auto;
+  background: var(--bg2);
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  padding: 24px;
+}
+.automa-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.automa-modal-head h4 {
+  margin: 0;
+}
+.automa-modal-close {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--bd2);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--tx);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.automa-modal-close:hover {
+  border-color: var(--pur);
+  background: rgba(139, 92, 246, 0.1);
+}
+.workspace-color-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--bd2);
+  border-radius: 10px;
+  background: var(--sf);
+}
+.workspace-color-field input {
+  width: 42px;
+  height: 34px;
+  flex: 0 0 42px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.workspace-color-field span {
+  min-width: 0;
+  color: var(--tx3);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
 .rv {
   opacity: 0;
   transform: translateY(26px);
@@ -171,6 +252,11 @@ a {
   display: flex;
   align-items: center;
   transition: background 0.3s, box-shadow 0.3s;
+}
+#nbar .container,
+#nbar .container > .d-flex {
+  min-width: 0;
+  max-width: 100%;
 }
 .lm #nbar {
   background: rgba(250, 250, 254, 0.88);
@@ -249,6 +335,16 @@ a {
   font-weight: 600;
   color: #a78bfa;
   margin-bottom: 22px;
+}
+.hero-model-badge {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.hero-model-badge .hbadge {
+  max-width: min(100%, 560px);
+  justify-content: center;
+  text-align: center;
 }
 .bdot {
   width: 7px;
@@ -1054,6 +1150,20 @@ a {
   min-height: 100vh;
   background: var(--bg);
 }
+#landing,
+#dashboard,
+.db-main,
+.db-content,
+.db-section {
+  min-width: 0;
+  max-width: 100%;
+}
+.db-content {
+  overflow-x: hidden;
+}
+.db-content .row > * {
+  min-width: 0;
+}
 /* DB TOPBAR */
 .db-top {
   position: fixed;
@@ -1105,10 +1215,15 @@ a {
   padding: 5px 9px 5px 6px;
   border-radius: 11px;
   white-space: nowrap;
+  max-width: 220px;
+  min-width: 0;
 }
 .workspace-switcher > span:not(.workspace-switcher-icon) {
   font: 600 0.72rem "Space Grotesk", sans-serif;
   line-height: 1.1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .workspace-switcher small {
   color: var(--tx3);
@@ -1123,9 +1238,23 @@ a {
   align-items: center;
   justify-content: center;
   border-radius: 9px;
-  background: rgba(139, 92, 246, 0.15);
-  color: #a78bfa;
+  background: var(--workspace-color, #0b2a4a);
+  color: #fff;
   font-size: 0.78rem;
+}
+.workspace-option-info {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.workspace-color-swatch {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
 }
 .workspace-option {
   display: flex;
@@ -1417,6 +1546,7 @@ a {
   display: grid;
   grid-template-columns: repeat(5, minmax(145px, 1fr));
   gap: 10px;
+  max-width: 100%;
   overflow-x: auto;
   padding-bottom: 2px;
 }
@@ -1539,7 +1669,8 @@ a {
     margin-left: 54px;
   }
   .crm-pipeline {
-    grid-template-columns: repeat(5, 190px);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow-x: visible;
   }
 }
 /* STAT CARDS */
@@ -1996,9 +2127,23 @@ a {
   }
   .db-main {
     margin-left: 0;
+    width: 100%;
   }
   .db-top {
     left: 0;
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+}
+@media (max-width: 767px) {
+  .db-top-search {
+    display: none;
+  }
+  .db-user-pill {
+    padding: 5px 7px;
+  }
+  .db-user-pill > div {
+    display: none !important;
   }
 }
 /* KEYFRAMES */
@@ -2097,7 +2242,74 @@ a {
   .db-top-search {
     display: none;
   }
+  .db-top {
+    gap: 8px;
+    padding: 0 12px;
+  }
+  .db-top .ms-auto {
+    gap: 8px !important;
+    flex-shrink: 0;
+  }
+  .workspace-switcher {
+    max-width: 150px;
+    padding-right: 8px;
+  }
+  .crm-banner > button {
+    width: 100%;
+    margin-left: 0;
+  }
+  #notifDropdown,
+  .db-dropdown {
+    min-width: min(calc(100vw - 24px), 340px) !important;
+    max-width: calc(100vw - 24px);
+  }
+  .workspace-switcher small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .db-user-pill {
+    padding: 5px 6px;
+  }
+  .db-user-pill > div {
+    display: none !important;
+  }
+  .db-content .d-flex.align-items-center.justify-content-between {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .crm-pipeline {
+    grid-template-columns: 1fr;
+    overflow-x: visible;
+  }
+  .automa-modal-overlay {
+    padding: 12px;
+  }
+  .automa-modal-card {
+    max-height: calc(100vh - 24px);
+    padding: 18px;
+  }
+  .automa-modal-head {
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  #nbar .container {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  #nbar .container > .d-flex > a {
+    min-width: 0;
+  }
+  #nbar .container > .d-flex > a > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #mbmenu {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
   .db-content {
-    padding: 16px;
+    padding: 16px 12px;
   }
 }
