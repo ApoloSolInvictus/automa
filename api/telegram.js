@@ -266,7 +266,14 @@ async function consumePairing(db, incoming, rawCode) {
 
 async function findIntakeSession(db, incoming) {
   const key = telegramBindingKey(incoming.chatId, incoming.businessConnectionId);
-  const snapshot = await db.collectionGroup('telegramIntakeSessions').where('bindingKey', '==', key).limit(10).get();
+  let snapshot;
+  try {
+    snapshot = await db.collectionGroup('telegramIntakeSessions').where('bindingKey', '==', key).limit(10).get();
+  } catch (error) {
+    // A missing collection-group index must not take the Telegram webhook down.
+    console.error('Telegram intake session lookup failed', { code: error?.code || 'intake_lookup_failed' });
+    return null;
+  }
   const match = snapshot.docs.find(doc => {
     const data = doc.data() || {};
     return data.status === 'collecting' && String(data.chatId) === incoming.chatId && String(data.businessConnectionId || '') === String(incoming.businessConnectionId || '');
@@ -441,17 +448,17 @@ export default async function handler(req, res) {
         throw error;
       }
     }
-    const intakeRoute = await findIntakeSession(db, incoming);
-    if (intakeRoute) {
-      const updateRef = incoming.updateId ? intakeRoute.root.collection('channels').doc('telegram').collection('updates').doc(incoming.updateId) : null;
-      if (updateRef && (await updateRef.get()).exists) return res.status(200).json({ ok: true, duplicate: true });
-      const result = await processIntakeMessage(db, intakeRoute, incoming);
-      await sendTelegramMessage(token, incoming.chatId, result.reply, incoming.businessConnectionId);
-      if (updateRef) await updateRef.set({ chatId: incoming.chatId, messageId: incoming.messageId, type: 'telegram_intake', createdAt: FieldValue.serverTimestamp() });
-      return res.status(200).json({ ok: true, intake: true, done: result.done, ...(result.result ? { records: result.result } : {}) });
-    }
     const route = await findBinding(db, incoming);
     if (!route) {
+      const intakeRoute = await findIntakeSession(db, incoming);
+      if (intakeRoute) {
+        const updateRef = incoming.updateId ? intakeRoute.root.collection('channels').doc('telegram').collection('updates').doc(incoming.updateId) : null;
+        if (updateRef && (await updateRef.get()).exists) return res.status(200).json({ ok: true, duplicate: true });
+        const result = await processIntakeMessage(db, intakeRoute, incoming);
+        await sendTelegramMessage(token, incoming.chatId, result.reply, incoming.businessConnectionId);
+        if (updateRef) await updateRef.set({ chatId: incoming.chatId, messageId: incoming.messageId, type: 'telegram_intake', createdAt: FieldValue.serverTimestamp() });
+        return res.status(200).json({ ok: true, intake: true, done: result.done, ...(result.result ? { records: result.result } : {}) });
+      }
       await sendTelegramMessage(token, incoming.chatId, 'This Telegram chat is not linked to an Automa client profile. Ask your account administrator for a secure linking link.', incoming.businessConnectionId);
       return res.status(200).json({ ok: true, ignored: true, reason: 'telegram_chat_unlinked' });
     }
