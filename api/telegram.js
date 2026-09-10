@@ -222,26 +222,72 @@ async function sendTelegramMessage(token, chatId, text, businessConnectionId = n
 
 async function findBinding(db, incoming) {
   const key = telegramBindingKey(incoming.chatId, incoming.businessConnectionId);
-  const snapshot = await db.collectionGroup('telegramBindings').where('bindingKey', '==', key).limit(10).get();
-  const match = snapshot.docs.find(doc => {
+  const matches = doc => {
     const data = doc.data() || {};
     return data.status === 'active' && String(data.chatId) === incoming.chatId && String(data.businessConnectionId || '') === String(incoming.businessConnectionId || '');
-  });
-  if (!match) return null;
-  const root = rootFromScopedRef(match.ref);
-  return root ? { ref: match.ref, root, binding: match.data() || {} } : null;
+  };
+  try {
+    const snapshot = await db.collectionGroup('telegramBindings').where('bindingKey', '==', key).limit(10).get();
+    const match = snapshot.docs.find(matches);
+    if (match) {
+      const root = rootFromScopedRef(match.ref);
+      return root ? { ref: match.ref, root, binding: match.data() || {} } : null;
+    }
+    return null;
+  } catch (error) {
+    // Collection-group indexes are not deployed by Vercel. Fall back to the
+    // deterministic binding document path so a missing index never becomes a
+    // Telegram 503 for an already linked chat.
+    console.error('Telegram binding lookup failed; using direct lookup', { code: error?.code || 'binding_lookup_failed' });
+    const roots = await telegramWorkspaceRoots(db);
+    const snapshots = await Promise.all(roots.map(root => root.collection('telegramBindings').doc(key).get()));
+    const match = snapshots.find(matches);
+    if (!match) return null;
+    const root = rootFromScopedRef(match.ref);
+    return root ? { ref: match.ref, root, binding: match.data() || {} } : null;
+  }
+}
+
+async function telegramWorkspaceRoots(db) {
+  const ownerUid = cleanEnv(process.env.TELEGRAM_OWNER_UID);
+  const roots = ownerUid ? [db.collection('users').doc(ownerUid)] : [];
+  if (!ownerUid) return roots;
+  try {
+    const organizations = await db.collection('organizations').where('ownerUid', '==', ownerUid).limit(100).get();
+    roots.push(...organizations.docs.map(doc => doc.ref));
+  } catch (error) {
+    console.error('Telegram organization lookup failed', { code: error?.code || 'organization_lookup_failed' });
+  }
+  return roots;
+}
+
+async function queryTelegramScopes(db, collection, field, value) {
+  try {
+    const snapshot = await db.collectionGroup(collection).where(field, '==', value).limit(10).get();
+    return snapshot.docs;
+  } catch (error) {
+    // A collection-group query needs a Firestore index that is not created by
+    // a Vercel deploy. Query each configured workspace collection instead.
+    console.error('Telegram scoped query failed; using workspace lookup', { collection, code: error?.code || 'scoped_query_failed' });
+    const roots = await telegramWorkspaceRoots(db);
+    const snapshots = await Promise.all(roots.map(async root => {
+      try { return await root.collection(collection).where(field, '==', value).limit(10).get(); }
+      catch (rootError) { console.error('Telegram workspace query failed', { collection, code: rootError?.code || 'workspace_query_failed' }); return null; }
+    }));
+    return snapshots.flatMap(snapshot => snapshot ? snapshot.docs : []);
+  }
 }
 
 async function consumePairing(db, incoming, rawCode) {
   const codeHash = telegramCodeHash(rawCode);
-  const snapshot = await db.collectionGroup('telegramPairings').where('codeHash', '==', codeHash).limit(10).get();
-  const candidate = snapshot.docs.find(doc => doc.data()?.status === 'pending' && !isExpired(doc.data()?.expiresAt));
+  const candidates = await queryTelegramScopes(db, 'telegramPairings', 'codeHash', codeHash);
+  const candidate = candidates.find(doc => doc.data()?.status === 'pending' && !isExpired(doc.data()?.expiresAt));
   if (!candidate) return null;
   const root = rootFromScopedRef(candidate.ref);
   if (!root) return null;
   const bindingKey = telegramBindingKey(incoming.chatId, incoming.businessConnectionId);
-  const existing = await db.collectionGroup('telegramBindings').where('bindingKey', '==', bindingKey).limit(10).get();
-  const activeExisting = existing.docs.find(doc => doc.data()?.status === 'active');
+  const existing = await queryTelegramScopes(db, 'telegramBindings', 'bindingKey', bindingKey);
+  const activeExisting = existing.find(doc => doc.data()?.status === 'active');
   if (activeExisting) throw Object.assign(new Error('TELEGRAM_BINDING_CONFLICT'), { code: 'telegram_binding_conflict' });
   const bindingRef = root.collection('telegramBindings').doc(bindingKey);
   await db.runTransaction(async transaction => {
@@ -266,15 +312,8 @@ async function consumePairing(db, incoming, rawCode) {
 
 async function findIntakeSession(db, incoming) {
   const key = telegramBindingKey(incoming.chatId, incoming.businessConnectionId);
-  let snapshot;
-  try {
-    snapshot = await db.collectionGroup('telegramIntakeSessions').where('bindingKey', '==', key).limit(10).get();
-  } catch (error) {
-    // A missing collection-group index must not take the Telegram webhook down.
-    console.error('Telegram intake session lookup failed', { code: error?.code || 'intake_lookup_failed' });
-    return null;
-  }
-  const match = snapshot.docs.find(doc => {
+  const docs = await queryTelegramScopes(db, 'telegramIntakeSessions', 'bindingKey', key);
+  const match = docs.find(doc => {
     const data = doc.data() || {};
     return data.status === 'collecting' && String(data.chatId) === incoming.chatId && String(data.businessConnectionId || '') === String(incoming.businessConnectionId || '');
   });
@@ -285,14 +324,14 @@ async function findIntakeSession(db, incoming) {
 
 async function consumeIntake(db, incoming, rawCode) {
   const codeHash = telegramCodeHash(rawCode);
-  const snapshot = await db.collectionGroup('telegramIntakes').where('codeHash', '==', codeHash).limit(10).get();
-  const candidate = snapshot.docs.find(doc => doc.data()?.status === 'pending' && !isExpired(doc.data()?.expiresAt));
+  const candidates = await queryTelegramScopes(db, 'telegramIntakes', 'codeHash', codeHash);
+  const candidate = candidates.find(doc => doc.data()?.status === 'pending' && !isExpired(doc.data()?.expiresAt));
   if (!candidate) return null;
   const root = rootFromScopedRef(candidate.ref);
   if (!root) return null;
   const bindingKey = telegramBindingKey(incoming.chatId, incoming.businessConnectionId);
-  const existingBinding = await db.collectionGroup('telegramBindings').where('bindingKey', '==', bindingKey).limit(10).get();
-  if (existingBinding.docs.some(doc => doc.data()?.status === 'active')) throw Object.assign(new Error('TELEGRAM_BINDING_CONFLICT'), { code: 'telegram_binding_conflict' });
+  const existingBinding = await queryTelegramScopes(db, 'telegramBindings', 'bindingKey', bindingKey);
+  if (existingBinding.some(doc => doc.data()?.status === 'active')) throw Object.assign(new Error('TELEGRAM_BINDING_CONFLICT'), { code: 'telegram_binding_conflict' });
   const sessionRef = root.collection('telegramIntakeSessions').doc(bindingKey);
   await db.runTransaction(async transaction => {
     const current = await transaction.get(candidate.ref);

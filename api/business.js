@@ -463,7 +463,15 @@ export default async function handler(req, res) {
     }
     if (cmd.action === 'saveEntity') {
       const ref = cmd.id ? root.collection(cmd.collection).doc(cmd.id) : root.collection(cmd.collection).doc();
-      await ref.set({ ...cmd.data, updatedAt: stamp, ...(cmd.id ? {} : { createdAt: stamp }) }, { merge: true });
+      await db.runTransaction(async transaction => {
+        const current = await transaction.get(ref);
+        const payload = { ...cmd.data, updatedAt: stamp };
+        // The Dashboard subscribes with orderBy(createdAt). Fixed-ID records
+        // (Telegram/Gmail integrations) must receive the same timestamp as
+        // generated documents, otherwise they disappear after a reload.
+        if (!current.exists || !current.data()?.createdAt) payload.createdAt = stamp;
+        transaction.set(ref, payload, { merge: true });
+      });
       return res.status(200).json({ ok: true, id: ref.id });
     }
     if (cmd.action === 'runAgent') {
