@@ -65,6 +65,7 @@ async function registerTelegramWebhook(db, userUid, orgId = null) {
   const secret = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
   const ownerUid = cleanEnv(process.env.TELEGRAM_OWNER_UID);
   const configuredUrl = cleanEnv(process.env.TELEGRAM_WEBHOOK_URL) || 'https://automa.wstudio3d.com/api/telegram';
+  const root = orgId ? db.collection('organizations').doc(orgId) : db.collection('users').doc(userUid);
   const savedConfig = await telegramConfig(db, userUid, orgId);
   const webhookUrl = isAllowedTelegramWebhookUrl(savedConfig.webhookUrl) ? savedConfig.webhookUrl.trim() : configuredUrl;
   if (!token || !secret) return { ok: false, code: 'telegram_not_configured', error: 'Add TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET in Vercel Production.' };
@@ -83,7 +84,9 @@ async function registerTelegramWebhook(db, userUid, orgId = null) {
       const reason = typeof payload.description === 'string' ? ` ${payload.description.slice(0, 240)}` : '';
       return { ok: false, code: 'telegram_webhook_register_failed', error: `Telegram rejected the webhook URL or token.${reason}` };
     }
-    return { ok: true, code: 'telegram_webhook_registered', webhookUrl };
+    const stamp = FieldValue.serverTimestamp();
+    await root.collection('integrations').doc('telegram').set({ provider: 'Telegram', status: 'Active', webhookUrl, webhookRegisteredAt: stamp, updatedAt: stamp }, { merge: true });
+    return { ok: true, code: 'telegram_webhook_registered', webhookUrl, status: 'Active' };
   } catch {
     return { ok: false, code: 'telegram_unreachable', error: 'Telegram could not be reached from the Vercel function.' };
   }

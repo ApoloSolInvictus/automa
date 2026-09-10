@@ -100,6 +100,11 @@ test('only accepts secure Automa or Vercel Telegram webhook URLs', () => {
  assert.equal(isAllowedTelegramWebhookUrl('https://attacker.vercel.app/api/telegram'), false);
  assert.equal(isAllowedTelegramWebhookUrl('https://automa.wstudio3d.com/api/telegram?x=1'), false);
 });
+test('validates Telegram saved status values', () => {
+ const parsed = parseCommand({ action: 'saveEntity', collection: 'integrations', id: 'telegram', data: { provider: 'Telegram', status: 'Active', webhookUrl: 'https://automa-new-deploy.vercel.app/api/telegram' } });
+ assert.equal(parsed.data.status, 'Active');
+ assert.throws(() => parseCommand({ action: 'saveEntity', collection: 'integrations', id: 'telegram', data: { provider: 'Telegram', status: 'Online' } }));
+});
 test('validates Telegram webhook secret characters', () => {
  assert.equal(isAllowedTelegramWebhookSecret('aZ09_-safe-token'), true);
  assert.equal(isAllowedTelegramWebhookSecret('contains spaces'), false);

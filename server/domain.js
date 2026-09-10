@@ -28,8 +28,10 @@ export function isAllowedTelegramWebhookUrl(value) {
   try {
     const url = new URL(value.trim());
     const hostname = url.hostname.toLowerCase();
-    const isAutomaVercel = hostname === 'automa.vercel.app' || /^automa-[a-z0-9]+-ronny-woods-projects\.vercel\.app$/.test(hostname);
-    return url.protocol === 'https:' && url.pathname === '/api/telegram' && !url.search && !url.hash && (hostname === 'automa.wstudio3d.com' || isAutomaVercel);
+    const configured = typeof process !== 'undefined' && typeof process.env?.TELEGRAM_WEBHOOK_URL === 'string' ? process.env.TELEGRAM_WEBHOOK_URL.trim().replace(/^("|')(.*)\1$/s, '$2').trim() : '';
+    const isConfiguredUrl = Boolean(configured && value.trim() === configured);
+    const isAutomaVercel = hostname === 'automa.vercel.app' || /^automa(?:-[a-z0-9-]+)?\.vercel\.app$/.test(hostname);
+    return url.protocol === 'https:' && url.pathname === '/api/telegram' && !url.search && !url.hash && (hostname === 'automa.wstudio3d.com' || isAutomaVercel || isConfiguredUrl);
   } catch { return false; }
 }
 export function isAllowedTelegramWebhookSecret(value) {
@@ -224,6 +226,7 @@ export function parseCommand(body) {
     }
     if (collection === 'integrations' && data.provider?.toLowerCase() === 'telegram') {
       if (data.agentId && !/^[a-zA-Z0-9_-]{1,80}$/.test(data.agentId)) throw new InputError('Agente de Telegram inválido.');
+      if (data.status && !['Needs setup', 'Active', 'Connected', 'Paused'].includes(data.status)) throw new InputError('Estado de Telegram inválido.');
       if (data.webhookUrl && !isAllowedTelegramWebhookUrl(data.webhookUrl)) throw new InputError('Webhook URL de Telegram inválida. Usa una URL HTTPS de Automa/Vercel que termine en /api/telegram.');
     }
     return { action: body.action, collection, id, orgId, data };

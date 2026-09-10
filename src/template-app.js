@@ -296,7 +296,7 @@ function telegramFields(integration = {}) {
     { key: 'botUsername', label: 'Telegram bot', value: integration.botUsername || '@WSTUDIO3DBot', placeholder: '@WSTUDIO3DBot' },
     { key: 'businessProfile', label: 'Telegram Business profile', value: integration.businessProfile || '@wstudiio3d', placeholder: '@wstudiio3d' },
     { key: 'agentId', label: 'Replying agent', type: 'select', value: integration.agentId || 'support-bot-v2-1', options: telegramAgentOptions },
-    { key: 'status', label: 'Connection status', type: 'select', value: integration.status || 'Needs setup', options: [{ value: 'Needs setup', label: 'Needs setup' }, { value: 'Connected', label: 'Connected' }, { value: 'Paused', label: 'Paused' }] },
+    { key: 'status', label: 'Connection status', type: 'select', value: integration.status || 'Needs setup', options: [{ value: 'Needs setup', label: 'Needs setup' }, { value: 'Active', label: 'Active' }, { value: 'Connected', label: 'Connected (legacy)' }, { value: 'Paused', label: 'Paused' }] },
     { key: 'webhookUrl', label: 'Webhook URL', type: 'url', value: integration.webhookUrl || `${window.location.origin}/api/telegram`, placeholder: 'https://automa.wstudio3d.com/api/telegram' }
   ];
 }
@@ -785,7 +785,14 @@ function wireWorkspace() {
     if (!btn.textContent.includes('Configure')) return;
     const card = btn.closest('[data-integration-id]');
     if (card?.dataset.integrationId === 'telegram') {
-      btn.addEventListener('click', () => modal('Configure Telegram', telegramFields(telegramIntegration), data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection: 'integrations', id: 'telegram', data: { ...data, provider: 'telegram' } })));
+      btn.addEventListener('click', () => modal('Configure Telegram', telegramFields(telegramIntegration), async data => {
+        const saved = { ...data, provider: 'Telegram' };
+        await callBusiness({ action: 'saveEntity', ...workspacePayload(), collection: 'integrations', id: 'telegram', data: saved });
+        telegramIntegration = { ...telegramIntegration, ...saved };
+        card.dataset.integrationStatus = saved.status || 'Needs setup';
+        card.querySelector('[data-telegram-status-label]')?.replaceChildren(document.createTextNode(saved.status || 'Needs setup'));
+        showCrmNotice('Telegram configuration saved', `Saved the bot, business profile, OpenAI agent, connection status and webhook URL for ${workspace.name}. Use Register webhook to apply this URL in Telegram.`);
+      }));
       return;
     }
     const integrationId = card?.dataset.integrationId || '';
