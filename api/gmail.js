@@ -195,6 +195,40 @@ export function createRawEmail({ from = '', to, cc = [], bcc = [], subject, html
   return Buffer.from(`${headers.join('\r\n')}\r\n\r\n${body}`, 'utf8').toString('base64url');
 }
 
+/**
+ * Creates a Gmail draft for a server-side workspace. The draft is intentionally
+ * never sent automatically: a workspace owner can review it in Gmail first.
+ */
+export async function createGmailDraftForRoot(root, { to, subject, html, plainText = '' }) {
+  if (!root || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(to || ''))) return { status: 'invalid_recipient' };
+  const credentials = await root.collection('private').doc('gmail').get();
+  const data = credentials.exists ? credentials.data() || {} : {};
+  if (typeof data.refreshToken !== 'string' || !data.refreshToken) return { status: 'not_connected' };
+  let accessToken;
+  try {
+    accessToken = await refreshAccessToken(data.refreshToken, oauthConfig());
+  } catch (error) {
+    if (error?.code === 'gmail_reconnect_required') {
+      await root.collection('integrations').doc('gmail').set({ provider: 'gmail', status: 'Reconnect required', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return { status: 'reconnect_required' };
+    }
+    return { status: 'unavailable' };
+  }
+  const sender = await gmailEmail(accessToken);
+  if (!sender) return { status: 'sender_missing' };
+  const raw = createRawEmail({ from: sender, to: [String(to).trim().toLowerCase()], subject: String(subject || '').slice(0, 200), html: String(html || ''), plainText });
+  try {
+    const payload = await gmailApi(accessToken, '/drafts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: { raw } }) });
+    return { status: 'created', id: payload.id || '', sender };
+  } catch (error) {
+    if (error?.status === 401 || error?.code === 'gmail_reconnect_required') {
+      await root.collection('integrations').doc('gmail').set({ provider: 'gmail', status: 'Reconnect required', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return { status: 'reconnect_required' };
+    }
+    return { status: 'unavailable' };
+  }
+}
+
 async function storeConnection(root, FieldValue, token, email) {
   const stamp = FieldValue.serverTimestamp();
   await Promise.all([

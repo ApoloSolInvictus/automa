@@ -58,6 +58,13 @@ test('validates CRM records and bounded CRM copilot requests', () => {
  assert.equal(service.collection, 'services');
  assert.throws(() => parseCommand({ action:'saveEntity', collection:'contracts', data:{ name:'Agreement', status:'active', customerVisible:'yes' } }));
 });
+test('validates Telegram intake management actions', () => {
+ const create = parseCommand({ action: 'telegramIntakeCreate', orgId: 'org_demo' });
+ assert.deepEqual(create, { action: 'telegramIntakeCreate', orgId: 'org_demo' });
+ const revoke = parseCommand({ action: 'telegramIntakeRevoke', intakeId: 'intake_123', orgId: 'org_demo' });
+ assert.equal(revoke.intakeId, 'intake_123');
+ assert.throws(() => parseCommand({ action: 'telegramIntakeRevoke', intakeId: '../unsafe' }));
+});
 test('validates organization workspaces, roles and scoped records', () => {
  const listed = parseCommand({ action:'organizationList' });
  assert.deepEqual(listed, { action:'organizationList' });

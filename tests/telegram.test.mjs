@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import telegramHandler, { buildTelegramCrmContext, parseTelegramPairingCode, parseTelegramUpdate, splitTelegramText, telegramBindingKey, webhookSecretMatches } from '../api/telegram.js';
+import telegramHandler, { buildTelegramCrmContext, parseTelegramIntakeAnswer, parseTelegramIntakeCode, parseTelegramPairingCode, parseTelegramUpdate, splitTelegramText, telegramBindingKey, webhookSecretMatches } from '../api/telegram.js';
 
 function response() {
   return {
@@ -55,6 +55,20 @@ test('parses one-time Telegram pairing commands and scopes CRM context', () => {
   assert.deepEqual(context.services.map(item => item.name), ['Managed workflows']);
   assert.equal(telegramBindingKey('123'), telegramBindingKey('123'));
   assert.notEqual(telegramBindingKey('123'), telegramBindingKey('124'));
+});
+
+test('validates the step-by-step Telegram CRM intake form', () => {
+  const code = 'B'.repeat(24);
+  assert.equal(parseTelegramIntakeCode(`/start@WSTUDIO3DBot automa_intake_${code}`), code);
+  assert.equal(parseTelegramIntakeCode(`/start automa_intake_short`), null);
+  assert.deepEqual(parseTelegramIntakeAnswer('contactName', 'Alex Morgan'), { ok: true, value: { firstName: 'Alex', lastName: 'Morgan' } });
+  assert.equal(parseTelegramIntakeAnswer('contactName', 'Alex').ok, false);
+  assert.deepEqual(parseTelegramIntakeAnswer('services', 'Contract intake, Follow-up'), { ok: true, value: ['Contract intake', 'Follow-up'] });
+  assert.deepEqual(parseTelegramIntakeAnswer('amount', '$12,500'), { ok: true, value: '12500' });
+  assert.deepEqual(parseTelegramIntakeAnswer('probability', '75%'), { ok: true, value: '75' });
+  assert.equal(parseTelegramIntakeAnswer('email', 'invalid').ok, false);
+  assert.deepEqual(parseTelegramIntakeAnswer('customerVisible', 'yes'), { ok: true, value: true });
+  assert.equal(parseTelegramIntakeAnswer('confirm', 'maybe').ok, false);
 });
 
 test('Telegram webhook rejects unsupported methods and invalid secrets', async () => {

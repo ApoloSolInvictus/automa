@@ -313,6 +313,16 @@ window.openTelegramPairing = function openTelegramPairing() {
     showCrmNotice('Telegram client link created', `Send this one-time link to the selected customer before it expires:\n\n${result.deepLink}\n\nExpires: ${new Date(result.expiresAt).toLocaleString()}`);
   });
 };
+window.openTelegramIntake = function openTelegramIntake() {
+  if (!currentUser) return showCrmNotice('Telegram client intake', 'Sign in before creating an intake link.');
+  if (workspace.role === 'viewer') return showCrmNotice('Telegram client intake', 'Viewer members have read-only access. Ask an Owner or Admin to create the secure link.');
+  return modal('Create a Telegram client intake link', [
+    { type: 'note', value: 'This one-time link opens a step-by-step Telegram form for a new client. It expires in 30 minutes, creates the company, contact, opportunity, requested services and draft contract only after the client confirms the summary, and keeps the data inside this workspace.' }
+  ], async () => {
+    const result = await callBusiness({ action: 'telegramIntakeCreate', ...workspacePayload() });
+    showCrmNotice('Telegram intake link created', `Send this secure link to the new client before it expires:\n\n${result.deepLink}\n\nExpires: ${new Date(result.expiresAt).toLocaleString()}\n\nThe client confirms the details in Telegram before anything is saved.`);
+  });
+};
 function agentFields(agent = {}) {
   return [
     { key: 'name', label: 'Agent name', value: agent.name || '', placeholder: 'Support Agent' },
@@ -805,6 +815,8 @@ function wireWorkspace() {
   });
   const telegramPairButton = section('integrations')?.querySelector('[data-telegram-pair]');
   telegramPairButton?.addEventListener('click', () => window.openTelegramPairing());
+  const telegramIntakeButton = section('integrations')?.querySelector('[data-telegram-intake]');
+  telegramIntakeButton?.addEventListener('click', () => window.openTelegramIntake());
   const gmailConnectButton = section('integrations')?.querySelector('[data-gmail-connect]');
   gmailConnectButton?.addEventListener('click', async () => {
     gmailConnectButton.disabled = true;

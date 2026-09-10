@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { requestOpenAI } from './chat.js';
+import { createGmailDraftForRoot } from './gmail.js';
 import { DEFAULT_OPENAI_MODEL, isAllowedOpenAIModel } from '../shared/models.js';
 import { getDefaultAgent } from '../shared/agents.js';
 
@@ -47,6 +48,78 @@ export function splitTelegramText(value, maxLength = 4096) {
 export function parseTelegramPairingCode(value) {
   const match = String(value || '').trim().match(/^\/start(?:@[A-Za-z0-9_]+)?\s+automa_([A-Za-z0-9_-]{20,128})$/i);
   return match ? match[1] : null;
+}
+
+export function parseTelegramIntakeCode(value) {
+  const match = String(value || '').trim().match(/^\/start(?:@[A-Za-z0-9_]+)?\s+automa_intake_([A-Za-z0-9_-]{20,128})$/i);
+  return match ? match[1] : null;
+}
+
+const INTAKE_STEPS = Object.freeze(['companyName', 'contactName', 'email', 'phone', 'services', 'opportunityName', 'amount', 'probability', 'summary', 'customerVisible', 'confirm']);
+const INTAKE_QUESTIONS = Object.freeze({
+  companyName: 'Let’s get started. What is the company or business name?',
+  contactName: 'What is the full name of the main contact?',
+  email: 'What email address should Automa use for the quote and follow-up?',
+  phone: 'What phone or WhatsApp number should we save? Reply skip if you do not want to add one.',
+  services: 'Which service or services are they interested in? Separate multiple services with commas.',
+  opportunityName: 'What should we call this opportunity or project?',
+  amount: 'What is the estimated contract value? Enter a number, or 0 if it is still unknown.',
+  probability: 'What is the probability of closing, from 0 to 100?',
+  summary: 'Briefly describe the requested work, contract scope or next step.',
+  customerVisible: 'May the linked customer see this service and contract summary in Telegram? Reply yes or no.',
+  confirm: 'Review the details above. Reply yes to create the CRM records, or no to cancel.'
+});
+
+export function parseTelegramIntakeAnswer(step, value) {
+  const text = String(value || '').trim();
+  if (!INTAKE_STEPS.includes(step) || !text || text.length > (step === 'summary' ? 1200 : 300)) return { ok: false, error: 'Please provide a shorter, non-empty answer.' };
+  if (step === 'companyName' || step === 'opportunityName') return { ok: true, value: text };
+  if (step === 'contactName') {
+    const parts = text.split(/\s+/).filter(Boolean);
+    if (parts.length < 2) return { ok: false, error: 'Please enter the contact’s first and last name.' };
+    return { ok: true, value: { firstName: parts.shift(), lastName: parts.join(' ') } };
+  }
+  if (step === 'email') return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) ? { ok: true, value: text.toLowerCase() } : { ok: false, error: 'That email address does not look valid. Please try again.' };
+  if (step === 'phone') return /^skip$/i.test(text) ? { ok: true, value: '' } : (/^[+()\d\s.-]{7,40}$/.test(text) ? { ok: true, value: text } : { ok: false, error: 'Please enter a valid phone number or reply skip.' });
+  if (step === 'services') {
+    const services = text.split(',').map(item => item.trim()).filter(Boolean).slice(0, 12);
+    if (!services.length || services.some(item => item.length > 120)) return { ok: false, error: 'Add one or more service names, separated by commas.' };
+    return { ok: true, value: services };
+  }
+  if (step === 'amount') {
+    const normalized = text.replace(/[$,\s]/g, '');
+    const amount = Number(normalized);
+    return Number.isFinite(amount) && amount >= 0 && amount <= 100000000 ? { ok: true, value: String(Math.round(amount * 100) / 100) } : { ok: false, error: 'Enter a value from 0 to 100000000.' };
+  }
+  if (step === 'probability') {
+    const probability = Number(text.replace('%', ''));
+    return Number.isInteger(probability) && probability >= 0 && probability <= 100 ? { ok: true, value: String(probability) } : { ok: false, error: 'Enter a whole percentage from 0 to 100.' };
+  }
+  if (step === 'summary') return { ok: true, value: text };
+  if (step === 'customerVisible' || step === 'confirm') {
+    if (/^(yes|y|si|sí)$/i.test(text)) return { ok: true, value: true };
+    if (/^(no|n)$/i.test(text)) return { ok: true, value: false };
+    return { ok: false, error: 'Reply yes or no.' };
+  }
+  return { ok: false, error: 'That answer is not supported.' };
+}
+
+function intakeQuestion(step) { return INTAKE_QUESTIONS[step] || INTAKE_QUESTIONS.companyName; }
+function intakePreview(answers) {
+  const contact = answers.contactName ? `${answers.contactName.firstName} ${answers.contactName.lastName}` : '';
+  return [
+    'Here is the intake summary:',
+    `• Company: ${answers.companyName}`,
+    `• Contact: ${contact} · ${answers.email}`,
+    `• Services: ${(answers.services || []).join(', ')}`,
+    `• Opportunity: ${answers.opportunityName}`,
+    `• Estimated value: $${answers.amount}`,
+    `• Probability: ${answers.probability}%`,
+    `• Customer-visible summary: ${answers.customerVisible ? 'Yes' : 'No'}`,
+    `• Scope: ${answers.summary}`,
+    '',
+    INTAKE_QUESTIONS.confirm
+  ].join('\n');
 }
 
 export function telegramBindingKey(chatId, businessConnectionId = null) {
@@ -191,6 +264,117 @@ async function consumePairing(db, incoming, rawCode) {
   return { root, binding, ref: bindingRef };
 }
 
+async function findIntakeSession(db, incoming) {
+  const key = telegramBindingKey(incoming.chatId, incoming.businessConnectionId);
+  const snapshot = await db.collectionGroup('telegramIntakeSessions').where('bindingKey', '==', key).limit(10).get();
+  const match = snapshot.docs.find(doc => {
+    const data = doc.data() || {};
+    return data.status === 'collecting' && String(data.chatId) === incoming.chatId && String(data.businessConnectionId || '') === String(incoming.businessConnectionId || '');
+  });
+  if (!match) return null;
+  const root = rootFromScopedRef(match.ref);
+  return root ? { root, ref: match.ref, session: match.data() || {}, bindingKey: key } : null;
+}
+
+async function consumeIntake(db, incoming, rawCode) {
+  const codeHash = telegramCodeHash(rawCode);
+  const snapshot = await db.collectionGroup('telegramIntakes').where('codeHash', '==', codeHash).limit(10).get();
+  const candidate = snapshot.docs.find(doc => doc.data()?.status === 'pending' && !isExpired(doc.data()?.expiresAt));
+  if (!candidate) return null;
+  const root = rootFromScopedRef(candidate.ref);
+  if (!root) return null;
+  const bindingKey = telegramBindingKey(incoming.chatId, incoming.businessConnectionId);
+  const existingBinding = await db.collectionGroup('telegramBindings').where('bindingKey', '==', bindingKey).limit(10).get();
+  if (existingBinding.docs.some(doc => doc.data()?.status === 'active')) throw Object.assign(new Error('TELEGRAM_BINDING_CONFLICT'), { code: 'telegram_binding_conflict' });
+  const sessionRef = root.collection('telegramIntakeSessions').doc(bindingKey);
+  await db.runTransaction(async transaction => {
+    const current = await transaction.get(candidate.ref);
+    const existing = await transaction.get(sessionRef);
+    if (existing.exists && existing.data()?.status === 'collecting') throw Object.assign(new Error('TELEGRAM_INTAKE_CONFLICT'), { code: 'telegram_intake_conflict' });
+    if (!current.exists || current.data()?.status !== 'pending' || isExpired(current.data()?.expiresAt)) throw Object.assign(new Error('TELEGRAM_INTAKE_EXPIRED'), { code: 'telegram_intake_expired' });
+    transaction.set(sessionRef, { bindingKey, chatId: incoming.chatId, businessConnectionId: incoming.businessConnectionId || null, status: 'collecting', step: INTAKE_STEPS[0], answers: {}, intakeId: candidate.id, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    transaction.update(candidate.ref, { status: 'used', usedAt: FieldValue.serverTimestamp(), chatId: incoming.chatId, bindingKey });
+  });
+  return { root, ref: sessionRef, bindingKey };
+}
+
+function htmlEscape(value) {
+  return String(value || '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+}
+
+function intakeEmailHtml(answers) {
+  const contact = answers.contactName ? `${answers.contactName.firstName} ${answers.contactName.lastName}` : 'there';
+  return `<!doctype html><html lang="en"><body style="margin:0;background:#f5f3fa;font-family:Arial,sans-serif;color:#25203a"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:28px 12px"><tr><td align="center"><table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border:1px solid #e7e0f2;border-radius:14px;overflow:hidden"><tr><td style="padding:24px;background:#0b2a4a;color:#fff;font-size:22px;font-weight:700">Automa by W Studio 3D</td></tr><tr><td style="padding:28px;font-size:16px;line-height:1.6"><p>Hello ${htmlEscape(contact)},</p><p>We received your request for <strong>${htmlEscape(answers.opportunityName)}</strong>. Our team will review the scope and prepare a quote.</p><p><strong>Requested services:</strong><br>${htmlEscape((answers.services || []).join(', '))}</p><p>Estimated value: <strong>$${htmlEscape(answers.amount)}</strong></p><p>We will follow up at this email address with the next steps.</p><p style="margin-bottom:0">Automa automates customer conversations, contracts and follow-ups with OpenAI agents.</p></td></tr><tr><td style="padding:18px 28px;border-top:1px solid #eee;color:#716983;font-size:12px">Automa by W Studio 3D · This message was prepared as a reviewable Gmail draft.</td></tr></table></td></tr></table></body></html>`;
+}
+
+async function completeIntake(db, route, incoming, answers) {
+  const companyRef = route.root.collection('companies').doc();
+  const contactRef = route.root.collection('contacts').doc();
+  const opportunityRef = route.root.collection('opportunities').doc();
+  const serviceRefs = (answers.services || []).map(() => route.root.collection('services').doc());
+  const contractRef = route.root.collection('contracts').doc();
+  const activityRef = route.root.collection('activities').doc();
+  const runRef = route.root.collection('runs').doc();
+  const stamp = FieldValue.serverTimestamp();
+  const contactName = answers.contactName || { firstName: 'Telegram', lastName: 'Client' };
+  const visible = answers.customerVisible ? 'true' : 'false';
+  const recordIds = { companyId: companyRef.id, contactId: contactRef.id, opportunityId: opportunityRef.id, contractId: contractRef.id, serviceIds: serviceRefs.map(ref => ref.id) };
+  const committed = await db.runTransaction(async transaction => {
+    const current = await transaction.get(route.ref);
+    if (!current.exists || current.data()?.status !== 'collecting') return { alreadyCompleted: true, ...(current.data()?.recordIds || {}) };
+    transaction.create(companyRef, { name: answers.companyName, industry: '', website: '', size: '', owner: '', status: 'prospect', notes: 'Created through the secure Telegram intake form.', source: 'telegram_intake', createdAt: stamp, updatedAt: stamp });
+    transaction.create(contactRef, { firstName: contactName.firstName, lastName: contactName.lastName, companyId: companyRef.id, email: answers.email, phone: answers.phone || '', role: '', status: 'lead', notes: 'Customer contact collected by Telegram.', source: 'telegram_intake', createdAt: stamp, updatedAt: stamp });
+    transaction.create(opportunityRef, { name: answers.opportunityName, companyId: companyRef.id, contactId: contactRef.id, stage: 'lead', amount: answers.amount, probability: answers.probability, nextStep: 'Review intake and prepare a quote', owner: '', expectedClose: '', notes: answers.summary, source: 'telegram_intake', createdAt: stamp, updatedAt: stamp });
+    serviceRefs.forEach((ref, index) => transaction.create(ref, { name: answers.services[index], companyId: companyRef.id, contactId: contactRef.id, status: 'proposed', description: answers.summary, plan: '', renewalDate: '', customerVisible: visible, source: 'telegram_intake', createdAt: stamp, updatedAt: stamp }));
+    transaction.create(contractRef, { name: `${answers.opportunityName} agreement`, companyId: companyRef.id, contactId: contactRef.id, status: 'draft', startDate: '', endDate: '', renewalDate: '', summary: answers.summary, customerVisible: visible, source: 'telegram_intake', createdAt: stamp, updatedAt: stamp });
+    transaction.create(activityRef, { type: 'note', subject: 'Telegram intake received', companyId: companyRef.id, contactId: contactRef.id, opportunityId: opportunityRef.id, dueDate: '', status: 'pending', notes: 'Review the opportunity and prepare a quote.', source: 'telegram_intake', createdAt: stamp, updatedAt: stamp });
+    transaction.create(runRef, { type: 'telegram_intake_submitted', provider: 'telegram', status: 'pending_review', chatId: incoming.chatId, contactId: contactRef.id, companyId: companyRef.id, opportunityId: opportunityRef.id, contractId: contractRef.id, serviceIds: serviceRefs.map(ref => ref.id), email: answers.email, sheetsStatus: 'pending_connection', gmailDraftStatus: 'pending', message: 'Telegram intake saved to CRM. Review the quote before logging to Sheets or sending the Gmail draft.', createdAt: stamp, updatedAt: stamp });
+    transaction.update(route.ref, { status: 'completed', completedAt: stamp, updatedAt: stamp, answers: {}, recordIds });
+    return recordIds;
+  });
+  if (committed.alreadyCompleted) return { ...committed, gmailDraftStatus: 'already_created' };
+  let gmailDraft = { status: 'not_connected' };
+  try {
+    gmailDraft = await createGmailDraftForRoot(route.root, { to: answers.email, subject: `Automa request received — ${answers.opportunityName}`, html: intakeEmailHtml(answers), plainText: `Hello ${contactName.firstName},\n\nWe received your request for ${answers.opportunityName}. Our team will review the scope and prepare a quote.\n\nRequested services: ${(answers.services || []).join(', ')}\nEstimated value: $${answers.amount}\n\nAutoma by W Studio 3D` });
+  } catch (error) {
+    console.error('Telegram intake Gmail draft failed', { code: error?.code || 'gmail_draft_failed' });
+    gmailDraft = { status: 'unavailable' };
+  }
+  try {
+    await runRef.set({ gmailDraftStatus: gmailDraft.status, ...(gmailDraft.id ? { gmailDraftId: gmailDraft.id } : {}), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  } catch (error) {
+    console.error('Telegram intake run update failed', { code: error?.code || 'run_update_failed' });
+  }
+  return { ...recordIds, gmailDraftStatus: gmailDraft.status };
+}
+
+async function processIntakeMessage(db, route, incoming) {
+  const text = incoming.text.trim();
+  if (/^\/(?:cancel|stop)$/i.test(text) || /^cancel$/i.test(text)) {
+    await route.ref.set({ status: 'cancelled', cancelledAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return { reply: 'The intake was cancelled. Ask your account team for a new secure link whenever you are ready.', done: true };
+  }
+  const step = route.session.step || INTAKE_STEPS[0];
+  if (step === 'confirm') {
+    const parsed = parseTelegramIntakeAnswer(step, text);
+    if (!parsed.ok) return { reply: `${parsed.error}\n\n${intakePreview(route.session.answers || {})}`, done: false };
+    if (!parsed.value) {
+      await route.ref.set({ status: 'cancelled', cancelledAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return { reply: 'No records were created. The intake was cancelled.', done: true };
+    }
+    const result = await completeIntake(db, route, incoming, route.session.answers || {});
+    const serviceCount = Array.isArray(result.serviceIds) ? result.serviceIds.length : 0;
+    return { reply: `Thanks — the client, opportunity, ${serviceCount} service${serviceCount === 1 ? '' : 's'}, and draft contract are now in the Automa CRM. A Gmail confirmation draft is ${result.gmailDraftStatus === 'created' ? 'ready for review' : 'not available yet'}; the Sheets log remains pending until Google Sheets is connected. The account team will review the quote before sending anything.`, done: true, result };
+  }
+  const parsed = parseTelegramIntakeAnswer(step, text);
+  if (!parsed.ok) return { reply: `${parsed.error}\n\n${intakeQuestion(step)}`, done: false };
+  const answers = { ...(route.session.answers || {}), ...(step === 'contactName' ? { contactName: parsed.value } : { [step]: parsed.value }) };
+  const index = INTAKE_STEPS.indexOf(step);
+  const nextStep = INTAKE_STEPS[index + 1];
+  await route.ref.set({ answers, step: nextStep, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  return { reply: nextStep === 'confirm' ? intakePreview(answers) : intakeQuestion(nextStep), done: false };
+}
+
 async function loadCrmSnapshot(root) {
   const collections = Object.keys(contextFields);
   const entries = await Promise.all(collections.map(async collection => {
@@ -217,6 +401,28 @@ export default async function handler(req, res) {
 
   try {
     const { db } = adminServices();
+    const intakeCode = parseTelegramIntakeCode(incoming.text);
+    if (intakeCode) {
+      try {
+        const intake = await consumeIntake(db, incoming, intakeCode);
+        if (!intake) {
+          await sendTelegramMessage(token, incoming.chatId, 'This Automa intake link is invalid or expired. Ask the business for a new secure link.', incoming.businessConnectionId);
+          return res.status(200).json({ ok: true, intake: false });
+        }
+        await sendTelegramMessage(token, incoming.chatId, `Welcome to Automa. I will ask a few questions to prepare your CRM request. You can send /cancel at any time.\n\n${intakeQuestion(INTAKE_STEPS[0])}`, incoming.businessConnectionId);
+        return res.status(200).json({ ok: true, intake: true });
+      } catch (error) {
+        if (error?.code === 'telegram_binding_conflict') {
+          await sendTelegramMessage(token, incoming.chatId, 'This Telegram chat is already linked to another Automa client profile. Ask the business team to review the connection.', incoming.businessConnectionId);
+          return res.status(200).json({ ok: true, intake: false, reason: error.code });
+        }
+        if (error?.code === 'telegram_intake_conflict') {
+          await sendTelegramMessage(token, incoming.chatId, 'An Automa intake is already in progress in this chat. Reply /cancel to restart it.', incoming.businessConnectionId);
+          return res.status(200).json({ ok: true, intake: false, reason: error.code });
+        }
+        throw error;
+      }
+    }
     const pairingCode = parseTelegramPairingCode(incoming.text);
     if (pairingCode) {
       try {
@@ -234,6 +440,15 @@ export default async function handler(req, res) {
         }
         throw error;
       }
+    }
+    const intakeRoute = await findIntakeSession(db, incoming);
+    if (intakeRoute) {
+      const updateRef = incoming.updateId ? intakeRoute.root.collection('channels').doc('telegram').collection('updates').doc(incoming.updateId) : null;
+      if (updateRef && (await updateRef.get()).exists) return res.status(200).json({ ok: true, duplicate: true });
+      const result = await processIntakeMessage(db, intakeRoute, incoming);
+      await sendTelegramMessage(token, incoming.chatId, result.reply, incoming.businessConnectionId);
+      if (updateRef) await updateRef.set({ chatId: incoming.chatId, messageId: incoming.messageId, type: 'telegram_intake', createdAt: FieldValue.serverTimestamp() });
+      return res.status(200).json({ ok: true, intake: true, done: result.done, ...(result.result ? { records: result.result } : {}) });
     }
     const route = await findBinding(db, incoming);
     if (!route) {

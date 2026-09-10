@@ -151,6 +151,37 @@ async function createTelegramPairing(db, FieldValue, root, uid, contactId) {
     }
   };
 }
+async function createTelegramIntake(db, FieldValue, root, uid) {
+  const rawCode = randomBytes(24).toString('base64url');
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+  const intakeRef = root.collection('telegramIntakes').doc();
+  const integrationSnapshot = await root.collection('integrations').doc('telegram').get();
+  const botUsername = telegramBotUsername(integrationSnapshot.data()?.botUsername);
+  await intakeRef.set({
+    codeHash: createHash('sha256').update(rawCode).digest('hex'),
+    status: 'pending',
+    createdBy: uid,
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAt
+  });
+  return {
+    status: 201,
+    body: {
+      ok: true,
+      code: 'telegram_intake_created',
+      intakeId: intakeRef.id,
+      deepLink: `https://t.me/${botUsername}?start=automa_intake_${rawCode}`,
+      expiresAt: expiresAt.toISOString()
+    }
+  };
+}
+async function revokeTelegramIntake(root, intakeId) {
+  const ref = root.collection('telegramIntakes').doc(intakeId);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) return { status: 404, body: { error: 'Intake link not found.', code: 'telegram_intake_not_found' } };
+  await ref.set({ status: 'revoked', revokedAt: new Date(), updatedAt: new Date() }, { merge: true });
+  return { status: 200, body: { ok: true, code: 'telegram_intake_revoked' } };
+}
 async function revokeTelegramPairing(db, root, pairingId) {
   const ref = root.collection('telegramPairings').doc(pairingId);
   const snapshot = await ref.get();
@@ -292,7 +323,7 @@ async function clearDemoData(db, root) {
   }
   return references.length;
 }
-const WORKSPACE_DATA_COLLECTIONS = ['leads', 'tasks', 'runs', 'internal', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities', 'contracts', 'services', 'telegramPairings', 'telegramBindings', 'emailTemplates', 'channels', 'private'];
+const WORKSPACE_DATA_COLLECTIONS = ['leads', 'tasks', 'runs', 'internal', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities', 'contracts', 'services', 'telegramPairings', 'telegramBindings', 'telegramIntakes', 'telegramIntakeSessions', 'emailTemplates', 'channels', 'private'];
 async function collectWorkspaceReferences(collectionRef, references) {
   for (const documentRef of await collectionRef.listDocuments()) {
     for (const subcollection of await documentRef.listCollections()) await collectWorkspaceReferences(subcollection, references);
@@ -388,11 +419,11 @@ export default async function handler(req, res) {
       const result = await requestOpenAI({ message: `<crm_snapshot>\n${cmd.context}\n</crm_snapshot>`, history: [] }, { model, instructions });
       return res.status(result.status).json({ ...result.body, agentId: requestedAgentId, agent: agent.name || 'Automa CRM Copilot' });
     }
-    if (cmd.action === 'telegramStatus' || cmd.action === 'telegramRegister' || cmd.action === 'telegramPairingCreate' || cmd.action === 'telegramPairingRevoke') {
+    if (cmd.action === 'telegramStatus' || cmd.action === 'telegramRegister' || cmd.action === 'telegramPairingCreate' || cmd.action === 'telegramPairingRevoke' || cmd.action === 'telegramIntakeCreate' || cmd.action === 'telegramIntakeRevoke') {
       const root = workspaceRoot(db, user.uid, cmd.orgId);
       const membership = cmd.orgId ? await organizationAccess(db, cmd.orgId, user.uid) : null;
       if (cmd.orgId && !membership) return res.status(403).json({ error: 'You are not a member of this organization.', code: 'organization_forbidden' });
-      if (cmd.action === 'telegramPairingCreate' || cmd.action === 'telegramPairingRevoke' || cmd.action === 'telegramRegister') {
+      if (cmd.action === 'telegramPairingCreate' || cmd.action === 'telegramPairingRevoke' || cmd.action === 'telegramIntakeCreate' || cmd.action === 'telegramIntakeRevoke' || cmd.action === 'telegramRegister') {
         if (cmd.orgId && !['owner', 'admin'].includes(membership.role)) return res.status(403).json({ error: 'Only an organization owner or admin can manage Telegram.', code: 'organization_forbidden' });
       }
       if (cmd.action === 'telegramStatus') return res.status(200).json(await telegramStatus(db, user.uid, cmd.orgId));
@@ -402,7 +433,11 @@ export default async function handler(req, res) {
       }
       const result = cmd.action === 'telegramPairingCreate'
         ? await createTelegramPairing(db, FieldValue, root, user.uid, cmd.contactId)
-        : await revokeTelegramPairing(db, root, cmd.pairingId);
+        : cmd.action === 'telegramPairingRevoke'
+          ? await revokeTelegramPairing(db, root, cmd.pairingId)
+          : cmd.action === 'telegramIntakeCreate'
+            ? await createTelegramIntake(db, FieldValue, root, user.uid)
+            : await revokeTelegramIntake(root, cmd.intakeId);
       return res.status(result.status).json(result.body);
     }
     const root = cmd.orgId ? db.collection('organizations').doc(cmd.orgId) : db.collection('users').doc(user.uid);

@@ -228,7 +228,7 @@ export function parseCommand(body) {
     }
     return { action: body.action, collection, id, orgId, data };
   }
-  if (body.action === 'telegramStatus' || body.action === 'telegramRegister') return { action: body.action, ...(body.orgId == null ? {} : { orgId: organizationId(body.orgId) }) };
+  if (body.action === 'telegramStatus' || body.action === 'telegramRegister' || body.action === 'telegramIntakeCreate') return { action: body.action, ...(body.orgId == null ? {} : { orgId: organizationId(body.orgId) }) };
   if (body.action === 'telegramPairingCreate') {
     const contactId = text(body.contactId, 'Contacto', 80);
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(contactId)) throw new InputError('Contacto inválido.');
@@ -238,6 +238,11 @@ export function parseCommand(body) {
     const pairingId = text(body.pairingId, 'Emparejamiento', 80);
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(pairingId)) throw new InputError('Emparejamiento inválido.');
     return { action: body.action, pairingId, ...(body.orgId == null ? {} : { orgId: organizationId(body.orgId) }) };
+  }
+  if (body.action === 'telegramIntakeRevoke') {
+    const intakeId = text(body.intakeId, 'Formulario', 80);
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(intakeId)) throw new InputError('Formulario inválido.');
+    return { action: body.action, intakeId, ...(body.orgId == null ? {} : { orgId: organizationId(body.orgId) }) };
   }
   if (body.action === 'saveProfile') {
     const name = text(body.name, 'Nombre', 120);
