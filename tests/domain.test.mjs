@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isAllowedTelegramWebhookSecret, isAllowedTelegramWebhookUrl, parseCommand, planFollowUp } from '../server/domain.js';
 import handler from '../api/business.js';
-import gmailHandler, { createRawEmail, htmlToPlainText, safeGeneratedEmail } from '../api/gmail.js';
+import gmailHandler, { createRawEmail, htmlToPlainText, normalizeGmailMessage, safeGeneratedEmail } from '../api/gmail.js';
 const lead = { action: 'createLead', name: ' Cliente ', email: ' TEST@example.com ', value: 50, requestId: 'aabbbbbb-1111-4111-8111-111111111111' };
 test('normalizes lead without trusting supplied user identity', () => {
  const parsed = parseCommand({ ...lead, uid: 'victim' });
@@ -107,6 +107,9 @@ test('validates Gmail compose actions and creates an RFC 2822 raw message', () =
  assert.throws(() => parseCommand({ action:'gmailSend', to:['client@example.com','client@example.com'], subject:'Hello', html:'<p>Hello</p>' }));
  assert.throws(() => parseCommand({ action:'gmailSend', to:['client@example.com'], subject:'Hello', html:'<script>alert(1)</script>' }));
  assert.throws(() => parseCommand({ action:'gmailGenerate', prompt:'x', model:'claude-3' }));
+ const replyRaw = createRawEmail({ from:'sender@example.com', to:['client@example.com'], subject:'Re: Proposal follow-up', html:'<p>Thanks</p>', extraHeaders:['In-Reply-To: <msg@example.com>', 'References: <thread@example.com> <msg@example.com>'] });
+ const replyMime = Buffer.from(replyRaw, 'base64url').toString('utf8');
+ assert.match(replyMime, /^In-Reply-To: <msg@example.com>/m); assert.match(replyMime, /^References: <thread@example.com> <msg@example.com>/m);
 });
 test('normalizes safe HTML drafts returned by OpenAI', () => {
  const draft = safeGeneratedEmail('```json\n{"subject":"Welcome to Automa","html":"<!doctype html><html><head><meta charset=\\"utf-8\\"></head><body><p>Welcome</p></body></html>","text":"Welcome"}\n```');
@@ -120,6 +123,18 @@ test('validates reusable Gmail HTML templates', () => {
  assert.equal(parseCommand({ action:'gmailTemplateDelete', id:'welcome_1' }).id, 'welcome_1');
  assert.throws(() => parseCommand({ action:'gmailTemplateSave', name:'Template', subject:'Hello\nBcc: attacker@example.com', html:'<p>Hello</p>' }));
  assert.throws(() => parseCommand({ action:'gmailTemplateSave', name:'Template', subject:'Hello', html:'<script>alert(1)</script>' }));
+});
+test('validates Gmail inbox review, message actions and template replies', () => {
+ const review = parseCommand({ action:'gmailInboxReview', model:'gpt-5.6-luna', orgId:'acme_ops' });
+ assert.deepEqual(review, { action:'gmailInboxReview', model:'gpt-5.6-luna', orgId:'acme_ops' });
+ assert.deepEqual(parseCommand({ action:'gmailMessageModify', id:'msg_123', operation:'archive' }), { action:'gmailMessageModify', id:'msg_123', operation:'archive', orgId:null });
+ assert.deepEqual(parseCommand({ action:'gmailReply', id:'msg_123', templateId:'welcome_1' }), { action:'gmailReply', id:'msg_123', templateId:'welcome_1', html:null, plainText:'', orgId:null });
+ assert.throws(() => parseCommand({ action:'gmailMessageModify', id:'msg_123', operation:'deleteForever' }));
+ assert.throws(() => parseCommand({ action:'gmailReply', id:'msg_123' }));
+});
+test('normalizes Gmail headers and base64url message bodies for safe review', () => {
+ const message = normalizeGmailMessage({ id:'msg_1', threadId:'thread_1', snippet:'Hello', labelIds:['INBOX','UNREAD'], payload:{ headers:[{name:'From',value:'Acme <Sales@Example.com>'},{name:'Subject',value:'Proposal'},{name:'Date',value:'Thu, 10 Sep 2026 12:00:00 +0000'}], mimeType:'text/plain', body:{ data:Buffer.from('Please review this proposal.','utf8').toString('base64url') } } });
+ assert.equal(message.fromEmail, 'sales@example.com'); assert.equal(message.subject, 'Proposal'); assert.equal(message.body, 'Please review this proposal.'); assert.equal(message.unread, true);
 });
 test('Gmail endpoint rejects unauthenticated email actions', async () => {
  const res = { setHeader(){}, status(code){ this.code = code; return this; }, json(body){ this.body = body; return this; } };

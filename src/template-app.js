@@ -376,8 +376,9 @@ function showCrmNotice(title, message) {
 function updateGmailUi(status = {}) {
   const connected = Boolean(status.connected);
   document.querySelectorAll('[data-gmail-status-label]').forEach(element => { element.textContent = status.status || (connected ? 'Connected' : 'Needs setup'); });
-  document.querySelectorAll('[data-gmail-email]').forEach(element => { element.textContent = status.email || (connected ? 'Connected Gmail account' : 'HTML email composer'); });
+  document.querySelectorAll('[data-gmail-email]').forEach(element => { element.textContent = status.email || (connected ? 'Connected Gmail account' : 'HTML email, inbox review, and replies'); });
   document.querySelectorAll('[data-gmail-disconnect]').forEach(button => { button.disabled = !connected; });
+  document.querySelectorAll('[data-gmail-review]').forEach(button => { button.disabled = !connected || status.scopeReady === false; });
 }
 async function loadGmailStatus() {
   if (!currentUser) return;
@@ -390,6 +391,49 @@ function recipientList(value) {
 function previewEmail(frame, html) {
   frame.srcdoc = html || '<!doctype html><html><body style="font-family:Arial,sans-serif;padding:28px;color:#475569">Your live HTML preview will appear here.</body></html>';
 }
+window.openGmailInboxReview = function openGmailInboxReview() {
+  if (!currentUser) return showCrmNotice('Gmail inbox review', 'Sign in and connect Gmail before reviewing messages.');
+  const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#000b;z-index:3100;padding:20px;overflow:auto';
+  const box = document.createElement('div'); box.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:18px;padding:24px;width:min(1080px,100%);margin:20px auto;max-height:calc(100vh - 80px);overflow:auto';
+  const heading = document.createElement('div'); heading.className = 'd-flex align-items-start justify-content-between gap-3 mb-3';
+  const headingText = document.createElement('div'); headingText.innerHTML = '<h4 style="margin:0 0 5px">AI Gmail Inbox Review</h4><div style="font-size:.82rem;color:var(--tx3)">OpenAI reviews up to 20 recent inbox messages, summarizes them, flags threats, and suggests saved templates for safe replies.</div>';
+  const close = document.createElement('button'); close.className = 'boc btn'; close.textContent = 'Close'; close.onclick = () => wrap.remove(); heading.append(headingText, close);
+  const controls = document.createElement('div'); controls.className = 'd-flex align-items-center gap-2 flex-wrap mb-3';
+  const modelLabel = document.createElement('label'); modelLabel.className = 'olbl mb-0'; modelLabel.textContent = 'Review model';
+  const model = document.createElement('select'); model.className = 'oinp'; model.style.width = 'min(300px,100%)'; OPENAI_MODELS.forEach(option => { const entry = document.createElement('option'); entry.value = option.id; entry.textContent = option.label; entry.selected = option.id === DEFAULT_OPENAI_MODEL; model.append(entry); });
+  const refresh = document.createElement('button'); refresh.className = 'bgrd btn'; refresh.innerHTML = '<i class="fa-solid fa-rotate me-1"></i>Review inbox';
+  const status = document.createElement('span'); status.style.cssText = 'font-size:.8rem;color:var(--tx3)'; status.textContent = 'The review never sends, archives, or deletes messages automatically.';
+  controls.append(modelLabel, model, refresh, status);
+  const summary = document.createElement('div'); summary.className = 'p-3 mb-3'; summary.style.cssText = 'background:var(--bg3);border:1px solid var(--bd);border-radius:10px;white-space:pre-wrap;color:var(--tx2);font-size:.86rem;line-height:1.55'; summary.textContent = 'Click Review inbox to fetch and analyze recent Gmail messages.';
+  const list = document.createElement('div');
+  const setBusy = value => { refresh.disabled = value; model.disabled = value; };
+  const render = result => {
+    const messages = Array.isArray(result.messages) ? result.messages : [];
+    const reviews = new Map((result.items || []).map(item => [item.messageId, item]));
+    const templates = new Map((result.templates || []).map(item => [item.id, item]));
+    summary.textContent = `${result.summary || 'No summary returned.'}\n\nReviewed ${messages.length} message${messages.length === 1 ? '' : 's'} with ${result.model || model.value}.`;
+    list.replaceChildren();
+    if (!messages.length) { list.innerHTML = '<div class="p-4 text-center" style="background:var(--bg3);border:1px solid var(--bd);border-radius:10px;color:var(--tx3)">No inbox messages from the last 30 days were found.</div>'; return; }
+    messages.forEach(message => {
+      const review = reviews.get(message.id) || { summary: message.snippet || 'No AI review was returned for this message.', priority: 'normal', threatLevel: 'unknown', threatReason: 'No classification returned.', canReply: false, templateId: '' };
+      const card = document.createElement('article'); card.className = 'p-3 mb-3'; card.style.cssText = 'background:var(--bg3);border:1px solid var(--bd);border-radius:12px';
+      const top = document.createElement('div'); top.className = 'd-flex align-items-start justify-content-between gap-3 flex-wrap';
+      const title = document.createElement('div'); const subject = document.createElement('strong'); subject.textContent = message.subject || '(No subject)'; const from = document.createElement('div'); from.style.cssText = 'font-size:.78rem;color:var(--tx3);margin-top:3px'; from.textContent = `${message.from || message.fromEmail || 'Unknown sender'} · ${message.date || 'Unknown date'}`; title.append(subject, from);
+      const badge = document.createElement('span'); badge.className = 'bst'; badge.textContent = `${String(review.threatLevel || 'unknown').toUpperCase()} · ${String(review.priority || 'normal').toUpperCase()}`; top.append(title, badge); card.append(top);
+      const ai = document.createElement('div'); ai.className = 'mt-3'; ai.style.cssText = 'font-size:.84rem;line-height:1.5;color:var(--tx2);white-space:pre-wrap'; ai.textContent = `${review.summary || 'No summary.'}\nThreat review: ${review.threatReason || 'No reason provided.'}`; card.append(ai);
+      const body = document.createElement('details'); body.className = 'mt-2'; const bodySummary = document.createElement('summary'); bodySummary.style.cssText = 'cursor:pointer;color:var(--tx3);font-size:.8rem'; bodySummary.textContent = 'Show message text'; const bodyText = document.createElement('div'); bodyText.className = 'mt-2'; bodyText.style.cssText = 'white-space:pre-wrap;max-height:180px;overflow:auto;font-size:.8rem;color:var(--tx2)'; bodyText.textContent = message.body || message.snippet || '(No readable text)'; body.append(bodySummary, bodyText); card.append(body);
+      const actions = document.createElement('div'); actions.className = 'd-flex gap-2 flex-wrap mt-3';
+      if (review.canReply && review.templateId && templates.has(review.templateId)) { const reply = document.createElement('button'); reply.className = 'bgrd btn py-2'; reply.innerHTML = '<i class="fa-solid fa-reply me-1"></i>Reply with template'; reply.title = `Template: ${templates.get(review.templateId).name}`; reply.onclick = async () => { if (!window.confirm(`Reply to ${message.fromEmail || message.from || 'this sender'} using “${templates.get(review.templateId).name}”?`)) return; reply.disabled = true; status.textContent = 'Sending the reviewed reply through Gmail…'; try { const sent = await callGmail({ action: 'gmailReply', ...workspacePayload(), id: message.id, templateId: review.templateId }); status.textContent = `Reply sent through Gmail. Message ID: ${sent.id || 'confirmed'}.`; } catch (error) { status.textContent = error.message || 'Gmail could not send the reply.'; } finally { reply.disabled = false; } }; actions.append(reply); }
+      if (message.unread) { const read = document.createElement('button'); read.className = 'boc btn py-2'; read.innerHTML = '<i class="fa-regular fa-envelope-open me-1"></i>Mark read'; read.onclick = async () => { read.disabled = true; try { await callGmail({ action: 'gmailMessageModify', ...workspacePayload(), id: message.id, operation: 'markRead' }); await reviewInbox(); } catch (error) { status.textContent = error.message || 'Gmail could not mark this message as read.'; read.disabled = false; } }; actions.append(read); }
+      const archive = document.createElement('button'); archive.className = 'boc btn py-2'; archive.innerHTML = '<i class="fa-solid fa-box-archive me-1"></i>Archive'; archive.onclick = async () => { archive.disabled = true; try { await callGmail({ action: 'gmailMessageModify', ...workspacePayload(), id: message.id, operation: 'archive' }); await reviewInbox(); } catch (error) { status.textContent = error.message || 'Gmail could not archive this message.'; archive.disabled = false; } }; actions.append(archive);
+      const trash = document.createElement('button'); trash.className = 'boc btn py-2'; trash.innerHTML = '<i class="fa-regular fa-trash-can me-1"></i>Trash'; trash.onclick = async () => { if (!window.confirm('Move this Gmail message to Trash?')) return; trash.disabled = true; try { await callGmail({ action: 'gmailMessageModify', ...workspacePayload(), id: message.id, operation: 'trash' }); await reviewInbox(); } catch (error) { status.textContent = error.message || 'Gmail could not move this message to Trash.'; trash.disabled = false; } }; actions.append(trash);
+      card.append(actions); list.append(card);
+    });
+  };
+  const reviewInbox = async () => { setBusy(true); status.textContent = 'Fetching recent Gmail messages and asking OpenAI for a security and reply review…'; try { render(await callGmail({ action: 'gmailInboxReview', ...workspacePayload(), model: model.value })); status.textContent = 'Review complete. Replies and mailbox changes require your confirmation.'; } catch (error) { status.textContent = error.message || 'Gmail inbox review failed.'; } finally { setBusy(false); } };
+  refresh.onclick = reviewInbox;
+  box.append(heading, controls, summary, list); wrap.append(box); document.body.append(wrap); void reviewInbox(); return wrap;
+};
 window.openGmailComposer = function openGmailComposer() {
   if (!currentUser) return showCrmNotice('Gmail', 'Sign in before composing an email.');
   const wrap = document.createElement('div'); wrap.style.cssText = 'position:fixed;inset:0;background:#000b;z-index:3100;padding:20px;overflow:auto';
@@ -668,6 +712,8 @@ function wireWorkspace() {
   });
   const gmailComposeButton = section('integrations')?.querySelector('[data-gmail-compose]');
   gmailComposeButton?.addEventListener('click', () => window.openGmailComposer());
+  const gmailReviewButton = section('integrations')?.querySelector('[data-gmail-review]');
+  gmailReviewButton?.addEventListener('click', () => window.openGmailInboxReview());
 }
 function subscribe(user) {
   const run = ++generation;

@@ -118,6 +118,28 @@ export function parseCommand(body) {
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id)) throw new InputError('Identificador inválido.');
     return { action: body.action, id, orgId: body.orgId == null ? null : organizationId(body.orgId) };
   }
+  if (body.action === 'gmailInboxReview') {
+    const model = body.model == null ? null : text(body.model, 'Modelo OpenAI', 80);
+    if (model && !isAllowedOpenAIModel(model)) throw new InputError('Modelo OpenAI no permitido.');
+    return { action: body.action, model, orgId: body.orgId == null ? null : organizationId(body.orgId) };
+  }
+  if (body.action === 'gmailMessageModify') {
+    const id = text(body.id, 'Identificador', 200);
+    if (!/^[a-zA-Z0-9_-]{1,200}$/.test(id)) throw new InputError('Identificador inválido.');
+    const operation = text(body.operation, 'Operación', 20);
+    if (!['markRead', 'archive', 'trash'].includes(operation)) throw new InputError('Operación Gmail inválida.');
+    return { action: body.action, id, operation, orgId: body.orgId == null ? null : organizationId(body.orgId) };
+  }
+  if (body.action === 'gmailReply') {
+    const id = text(body.id, 'Identificador', 200);
+    if (!/^[a-zA-Z0-9_-]{1,200}$/.test(id)) throw new InputError('Identificador inválido.');
+    const templateId = body.templateId == null ? null : text(body.templateId, 'Plantilla', 80);
+    if (templateId && !/^[a-zA-Z0-9_-]{1,80}$/.test(templateId)) throw new InputError('Plantilla inválida.');
+    const html = body.html == null ? null : emailHtml(body.html);
+    const plainText = body.plainText == null ? '' : text(body.plainText, 'Texto del correo', 20000);
+    if (!templateId && !html) throw new InputError('Selecciona una plantilla o proporciona HTML para responder.');
+    return { action: body.action, id, templateId, html, plainText, orgId: body.orgId == null ? null : organizationId(body.orgId) };
+  }
   if (body.action === 'gmailGenerate') {
     const prompt = text(body.prompt, 'Instrucciones del correo', 5000);
     const model = body.model == null ? null : text(body.model, 'Modelo OpenAI', 80);

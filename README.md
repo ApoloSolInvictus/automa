@@ -415,7 +415,7 @@ La tarjeta **Dashboard → Integrations → Gmail** permite crear un borrador co
    - Privacy Policy: `https://automa.wstudio3d.com/privacy.html`
    - Terms of Service: `https://automa.wstudio3d.com/terms.html`
 
-La conexión usa acceso offline y el scope mínimo `https://www.googleapis.com/auth/gmail.send`; Google entrega un refresh token al servidor para que Automa pueda enviar desde la cuenta conectada. Gmail exige correos MIME RFC 2822 codificados en base64URL para `users.messages.send`. Consulta la documentación oficial de [OAuth de servidor para Gmail](https://developers.google.com/workspace/gmail/api/auth/web-server), [OAuth para aplicaciones web](https://developers.google.com/identity/protocols/oauth2/web-server) y [envío de mensajes](https://developers.google.com/workspace/gmail/api/guides/sending).
+La conexión usa acceso offline y el scope `https://www.googleapis.com/auth/gmail.modify`, que permite leer, clasificar, marcar, archivar, redactar y enviar mensajes desde la cuenta conectada. Google entrega un refresh token al servidor; nunca se expone al navegador. Gmail exige correos MIME RFC 2822 codificados en base64URL para `users.messages.send`. Consulta la documentación oficial de [OAuth de servidor para Gmail](https://developers.google.com/workspace/gmail/api/auth/web-server), [OAuth para aplicaciones web](https://developers.google.com/identity/protocols/oauth2/web-server), [scopes de Gmail](https://developers.google.com/identity/protocols/oauth2/scopes), [listar mensajes](https://developers.google.com/workspace/gmail/api/guides/list-messages), [modificar mensajes](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/modify) y [envío de mensajes](https://developers.google.com/workspace/gmail/api/guides/sending).
 
 ### 7.2 Variables privadas de Vercel
 
@@ -438,6 +438,10 @@ No uses una Web API Key de Firebase ni una API key de OpenAI en esas variables. 
 4. Si quieres reutilizarlo, escribe un nombre y pulsa **Save HTML as template**. Las plantillas quedan aisladas por espacio de trabajo, se pueden cargar desde **Saved HTML templates** y borrar con el icono de papelera.
 5. Añade hasta 50 destinatarios entre `To`, `CC` y `BCC`; separa correos con coma, punto y coma o salto de línea.
 6. Pulsa **Send with Gmail** y confirma el envío.
+
+Para revisar la bandeja, pulsa **AI inbox review** en la tarjeta de Gmail. Automa consulta hasta 20 mensajes de la bandeja recibidos durante los últimos 30 días, genera con el agente **Email Automator** un resumen general y otro por mensaje, clasifica señales de phishing, robo de credenciales, malware y fraude de pagos, y propone una plantilla guardada cuando una respuesta parece segura. Desde cada resultado puedes abrir el texto, marcarlo como leído, archivarlo o moverlo a la papelera. **Reply with template** crea la respuesta en el mismo hilo y siempre pide confirmación antes de enviar; ninguna respuesta, archivo o eliminación se ejecuta automáticamente.
+
+Después de cambiar el scope desde `gmail.send` a `gmail.modify`, pulsa **Disconnect** y vuelve a pulsar **Connect Gmail** para que Google solicite el permiso ampliado. Si la tarjeta indica **Reconnect required**, repite ese ciclo. `gmail.modify` es un scope restringido: durante pruebas la cuenta debe estar en **Test users** y, para uso público, Google puede exigir verificación de OAuth.
 
 El servidor rechaza scripts, iframes, formularios, URLs `javascript:` o `data:`, asuntos con saltos de línea y destinatarios repetidos. El historial guarda solo metadatos mínimos del envío en `runs`; no guarda el HTML ni tokens OAuth. Las plantillas guardan el HTML, el asunto y el modelo para volver a usarlos. **Disconnect** elimina de Automa el token de Gmail de ese espacio. El restablecimiento local o global también elimina las plantillas y `private/gmail`.
 
