@@ -4,7 +4,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { InputError, parseCommand } from '../server/domain.js';
 import { requestOpenAI } from './chat.js';
-import { DEFAULT_OPENAI_MODEL } from '../shared/models.js';
+import { DEFAULT_OPENAI_MODEL, isAllowedOpenAIModel } from '../shared/models.js';
 import { getDefaultAgent } from '../shared/agents.js';
 
 const GMAIL_SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/gmail.modify'];
@@ -370,7 +370,8 @@ async function reviewInbox(root, FieldValue, requestedModel = null) {
   const savedAgent = agentSnapshot.exists ? agentSnapshot.data() || {} : {};
   const agent = { ...(getDefaultAgent('email-automator') || {}), ...savedAgent };
   if (agent.status === 'paused') { const error = new Error('gmail_agent_paused'); error.status = 409; error.code = 'gmail_agent_paused'; throw error; }
-  const model = requestedModel || agent.model || DEFAULT_OPENAI_MODEL;
+  const candidateModel = requestedModel || agent.model || DEFAULT_OPENAI_MODEL;
+  const model = isAllowedOpenAIModel(candidateModel) ? candidateModel : DEFAULT_OPENAI_MODEL;
   const context = JSON.stringify({ messages: messages.map(({ id, from, fromEmail, subject, date, body, unread, attachments }) => ({ id, from, fromEmail, subject, date, body, unread, attachments })), templates: templates.map(({ id, name, subject }) => ({ id, name, subject })) });
   const instructions = [
     `You are ${agent.name || 'Automa Email Guardian'} for Automa by W Studio 3D.`,
