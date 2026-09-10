@@ -74,6 +74,12 @@ async function registerTelegramWebhook(db, userUid, orgId = null) {
   if (!orgId && (!ownerUid || ownerUid !== userUid)) return { ok: false, code: 'telegram_owner_mismatch', error: 'TELEGRAM_OWNER_UID must be the Firebase Authentication UID of the signed-in Dashboard user.' };
   if (!isAllowedTelegramWebhookUrl(webhookUrl)) return { ok: false, code: 'telegram_webhook_url_invalid', error: 'Set TELEGRAM_WEBHOOK_URL or the Dashboard webhook URL to a secure Automa/Vercel /api/telegram URL.' };
   try {
+    const meResponse = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/getMe`, { signal: AbortSignal.timeout(8000) });
+    const mePayload = await meResponse.json().catch(() => ({}));
+    if (!meResponse.ok || mePayload.ok !== true) {
+      const reason = typeof mePayload.description === 'string' ? ` ${mePayload.description.slice(0, 160)}` : '';
+      return { ok: false, code: meResponse.status === 401 || /unauthorized/i.test(reason) ? 'telegram_token_invalid' : 'telegram_bot_unavailable', error: `Telegram rejected TELEGRAM_BOT_TOKEN.${reason} Update the Production variable in Vercel and redeploy before trying again.` };
+    }
     const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/setWebhook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

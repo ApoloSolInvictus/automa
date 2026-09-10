@@ -292,7 +292,7 @@ const modelFields = (value = DEFAULT_OPENAI_MODEL) => [{ key: 'model', label: 'O
 const telegramAgentOptions = Object.entries(DEFAULT_AGENTS).map(([value, agent]) => ({ value, label: `${agent.name} · ${modelLabel(agent.model)}` }));
 function telegramFields(integration = {}) {
   return [
-    { type: 'note', value: 'The bot token and webhook secret stay in Vercel environment variables. This form stores only Telegram metadata and the OpenAI agent selected for replies.' },
+    { type: 'note', value: 'The bot token and webhook secret stay in Vercel only. Update TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET under Vercel Project Settings → Environment Variables → Production, then redeploy. This form stores only Telegram metadata and the OpenAI agent selected for replies.' },
     { key: 'botUsername', label: 'Telegram bot', value: integration.botUsername || '@WSTUDIO3DBot', placeholder: '@WSTUDIO3DBot' },
     { key: 'businessProfile', label: 'Telegram Business profile', value: integration.businessProfile || '@wstudiio3d', placeholder: '@wstudiio3d' },
     { key: 'agentId', label: 'Replying agent', type: 'select', value: integration.agentId || 'support-bot-v2-1', options: telegramAgentOptions },
