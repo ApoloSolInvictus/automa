@@ -915,7 +915,7 @@
                      <div class="col-6 col-xl-3"><div class="db-stat-card"><div class="crm-kpi-icon" style="background:rgba(251,191,36,.12);color:#fbbf24"><i class="fa-regular fa-clock"></i></div><div class="db-stat-val" id="crmStatActivities">0</div><div class="db-stat-lbl">Pending Activities</div></div></div>
                   </div>
                   <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-                     <div class="crm-search"><i class="fa-solid fa-magnifying-glass"></i><input id="crmSearch" type="search" placeholder="Search companies, contacts and opportunities..."></div>
+                     <div class="crm-search"><i class="fa-solid fa-magnifying-glass"></i><input id="crmSearch" type="search" placeholder="Search companies, contacts, contracts and services..."></div>
                      <select class="crm-select" id="crmStageFilter" aria-label="Filter opportunities by stage"><option value="all">All pipeline stages</option><option value="lead">Lead</option><option value="qualified">Qualified</option><option value="proposal">Proposal</option><option value="won">Won</option><option value="lost">Lost</option></select>
                      <select class="crm-select" id="crmAgentSelect" aria-label="CRM AI agent"><option value="support-bot-v2-1">Customer Support Agent · Terra</option><option value="sales-qualifier">Contract Coordinator · Sol</option><option value="data-analyzer">Business Flow Analyst · Luna</option><option value="email-automator">Follow-up Agent · Terra</option></select>
                   </div>
@@ -944,6 +944,10 @@
                   <div class="row g-3">
                      <div class="col-lg-7"><div class="crm-panel"><div class="d-flex align-items-center justify-content-between mb-3"><div><div class="crm-panel-title"><i class="fa-solid fa-address-card me-2" style="color:#60a5fa"></i>Companies &amp; Contacts</div><div class="crm-panel-subtitle">Every relationship, owner and next step at a glance.</div></div><button class="boc btn py-1 px-2" data-crm-action="company" style="font-size:.75rem">Add company</button></div><div id="crmRecords" class="crm-records"><div class="crm-empty">Create a company or contact to start your CRM.</div></div></div></div>
                      <div class="col-lg-5"><div class="crm-panel"><div class="d-flex align-items-center justify-content-between mb-3"><div><div class="crm-panel-title"><i class="fa-regular fa-calendar-check me-2" style="color:#fbbf24"></i>Upcoming Activities</div><div class="crm-panel-subtitle">Tasks and touchpoints that keep deals moving.</div></div><button class="boc btn py-1 px-2" data-crm-action="activity" style="font-size:.75rem">Log activity</button></div><div id="crmActivities" class="crm-activities"><div class="crm-empty">No activities scheduled.</div></div></div></div>
+                  </div>
+                  <div class="row g-3 mt-1">
+                     <div class="col-lg-6"><div class="crm-panel"><div class="d-flex align-items-center justify-content-between mb-3"><div><div class="crm-panel-title"><i class="fa-solid fa-file-contract me-2" style="color:#a78bfa"></i>Contracts</div><div class="crm-panel-subtitle">Only records marked customer-visible can be shared by Telegram.</div></div><button class="boc btn py-1 px-2" data-crm-action="contract" style="font-size:.75rem">Add contract</button></div><div id="crmContracts" class="crm-activities"><div class="crm-empty">No contracts yet.</div></div></div></div>
+                     <div class="col-lg-6"><div class="crm-panel"><div class="d-flex align-items-center justify-content-between mb-3"><div><div class="crm-panel-title"><i class="fa-solid fa-cubes me-2" style="color:#34d399"></i>Services</div><div class="crm-panel-subtitle">Keep customer-approved service details current.</div></div><button class="boc btn py-1 px-2" data-crm-action="service" style="font-size:.75rem">Add service</button></div><div id="crmServices" class="crm-activities"><div class="crm-empty">No services yet.</div></div></div></div>
                   </div>
                </div>
                <!-- -- AI AGENTS -- -->
@@ -1375,7 +1379,7 @@
                               <span class="bst sbz ms-auto" data-telegram-status-label>Needs setup</span>
                            </div>
                            <div style="font-size:.8rem;color:var(--tx2);margin-bottom:12px">OpenAI agent replies through the secure Vercel webhook.</div>
-                           <div class="d-flex gap-2 flex-wrap"><button class="boc btn flex-fill py-2" data-telegram-status style="font-size:.82rem"><i class="fa-solid fa-heart-pulse me-1"></i>Check status</button><button class="boc btn flex-fill py-2" data-telegram-register style="font-size:.82rem"><i class="fa-solid fa-link me-1"></i>Register webhook</button><button class="boc btn flex-fill py-2" style="font-size:.82rem"><i class="fa-solid fa-gear me-1"></i>Configure</button></div>
+                           <div class="d-flex gap-2 flex-wrap"><button class="boc btn flex-fill py-2" data-telegram-status style="font-size:.82rem"><i class="fa-solid fa-heart-pulse me-1"></i>Check status</button><button class="boc btn flex-fill py-2" data-telegram-register style="font-size:.82rem"><i class="fa-solid fa-link me-1"></i>Register webhook</button><button class="boc btn flex-fill py-2" data-telegram-pair style="font-size:.82rem"><i class="fa-solid fa-user-shield me-1"></i>Link CRM contact</button><button class="boc btn flex-fill py-2" style="font-size:.82rem"><i class="fa-solid fa-gear me-1"></i>Configure</button></div>
                         </div>
                      </div>
                      <div class="col-md-4">

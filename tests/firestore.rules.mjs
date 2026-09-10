@@ -17,7 +17,7 @@ test('only owner reads allowed collections; all browser writes and cross-account
   await assertFails(getDoc(doc(other, 'organizations/acme/companies/company')));
   await assertFails(getDoc(doc(guest, 'organizations/acme/companies/company')));
   await assertFails(setDoc(doc(owner, 'organizations/acme/companies/company'), { name:'forged' }));
-  for (const name of ['leads','tasks','runs','settings','agents','automations','integrations','companies','contacts','opportunities','activities']) {
+  for (const name of ['leads','tasks','runs','settings','agents','automations','integrations','companies','contacts','opportunities','activities','contracts','services']) {
    const path=`users/owner/${name}/one`;
    await assertSucceeds(getDoc(doc(owner,path)));
    await assertFails(getDoc(doc(other,path)));

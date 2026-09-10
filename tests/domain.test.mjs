@@ -52,6 +52,11 @@ test('validates CRM records and bounded CRM copilot requests', () => {
  const assist = parseCommand({ action:'crmAssist', task:'summary', context:'{"companies":[],"opportunities":[]}', agentId:'data-analyzer' });
  assert.equal(assist.task, 'summary'); assert.equal(assist.agentId, 'data-analyzer');
  assert.throws(() => parseCommand({ action:'crmAssist', task:'delete', context:'{}' }));
+ const contract = parseCommand({ action:'saveEntity', collection:'contracts', data:{ name:'Services agreement', status:'active', customerVisible:'true' } });
+ assert.equal(contract.collection, 'contracts');
+ const service = parseCommand({ action:'saveEntity', collection:'services', data:{ name:'Managed support', status:'active', customerVisible:'false' } });
+ assert.equal(service.collection, 'services');
+ assert.throws(() => parseCommand({ action:'saveEntity', collection:'contracts', data:{ name:'Agreement', status:'active', customerVisible:'yes' } }));
 });
 test('validates organization workspaces, roles and scoped records', () => {
  const listed = parseCommand({ action:'organizationList' });
@@ -110,6 +115,13 @@ test('validates Gmail compose actions and creates an RFC 2822 raw message', () =
  const replyRaw = createRawEmail({ from:'sender@example.com', to:['client@example.com'], subject:'Re: Proposal follow-up', html:'<p>Thanks</p>', extraHeaders:['In-Reply-To: <msg@example.com>', 'References: <thread@example.com> <msg@example.com>'] });
  const replyMime = Buffer.from(replyRaw, 'base64url').toString('utf8');
  assert.match(replyMime, /^In-Reply-To: <msg@example.com>/m); assert.match(replyMime, /^References: <thread@example.com> <msg@example.com>/m);
+});
+test('validates Telegram CRM pairing commands', () => {
+ const pairing = parseCommand({ action:'telegramPairingCreate', contactId:'contact_123', orgId:'acme_ops' });
+ assert.deepEqual(pairing, { action:'telegramPairingCreate', contactId:'contact_123', orgId:'acme_ops' });
+ const revoke = parseCommand({ action:'telegramPairingRevoke', pairingId:'pairing_123' });
+ assert.deepEqual(revoke, { action:'telegramPairingRevoke', pairingId:'pairing_123' });
+ assert.throws(() => parseCommand({ action:'telegramPairingCreate', contactId:'../other' }));
 });
 test('normalizes safe HTML drafts returned by OpenAI', () => {
  const draft = safeGeneratedEmail('```json\n{"subject":"Welcome to Automa","html":"<!doctype html><html><head><meta charset=\\"utf-8\\"></head><body><p>Welcome</p></body></html>","text":"Welcome"}\n```');

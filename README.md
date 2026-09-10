@@ -368,12 +368,13 @@ En **Project settings → Environment Variables**, agrega estas variables en Pro
 ```env
 TELEGRAM_BOT_TOKEN=                         # token que entrega @BotFather
 TELEGRAM_WEBHOOK_SECRET=                    # secreto nuevo, aleatorio; sólo A-Z a-z 0-9 _ -
-TELEGRAM_OWNER_UID=                         # UID del usuario propietario en Firebase Auth
+TELEGRAM_OWNER_UID=                         # opcional: UID autorizado para el restablecimiento global
 TELEGRAM_AGENT_ID=support-bot-v2-1
+TELEGRAM_BOT_USERNAME=WSTUDIO3DBot
 TELEGRAM_WEBHOOK_URL=https://automa.wstudio3d.com/api/telegram
 ```
 
-Marca `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como secretos. Telegram sólo acepta para `TELEGRAM_WEBHOOK_SECRET` entre 1 y 256 caracteres de `A-Z`, `a-z`, `0-9`, `_` o `-`; no uses espacios, puntos, comillas, `/`, `+` ni `=`. No los guardes en Firestore, `.env.example`, GitHub ni en el navegador. `TELEGRAM_OWNER_UID` enlaza el chat de Telegram con la cuenta que contiene `users/{uid}/agents`; debe ser exactamente el **User UID** que aparece en Firebase Console → Authentication → Users para la cuenta con la que inicias sesión en el Dashboard. No uses el correo, la Web API Key ni el ID token. `TELEGRAM_AGENT_ID` puede ser `support-bot-v2-1`, `sales-qualifier`, `data-analyzer` o `email-automator`, o el ID de un agente que hayas guardado desde el dashboard.
+Marca `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` como secretos. Telegram sólo acepta para `TELEGRAM_WEBHOOK_SECRET` entre 1 y 256 caracteres de `A-Z`, `a-z`, `0-9`, `_` o `-`; no uses espacios, puntos, comillas, `/`, `+` ni `=`. No los guardes en Firestore, `.env.example`, GitHub ni en el navegador. `TELEGRAM_OWNER_UID` ya no decide qué cliente recibe un mensaje; es opcional y sólo sirve para el restablecimiento global y diagnósticos de la cuenta personal. `TELEGRAM_BOT_USERNAME` sólo se usa para construir los enlaces de vinculación. `TELEGRAM_AGENT_ID` es el agente de respaldo; cada espacio puede seleccionar otro agente desde Configure Telegram.
 
 ### 6.2 Registrar el webhook
 
@@ -391,15 +392,15 @@ El script llama a `setWebhook` con `https://automa.wstudio3d.com/api/telegram`, 
 ### 6.3 Probar el flujo
 
 1. En Telegram Business, conecta `@WSTUDIO3DBot` como bot empresarial desde los ajustes de tu cuenta.
-2. Abre `@WSTUDIO3DBot` y pulsa **START BOT** para probar también el chat directo.
-3. Envía un mensaje de texto, por ejemplo: `Help me qualify this new lead.`
-4. Telegram entrega `message` o `business_message` al webhook de Vercel.
-5. Vercel carga el agente y su modelo desde Firestore, llama a OpenAI y devuelve la respuesta al mismo chat o al perfil empresarial.
-6. La conversación se conserva en `users/{uid}/channels/telegram/chats/{chatId}` y el identificador del evento en `users/{uid}/channels/telegram/updates/{updateId}`.
+2. En el Dashboard abre **CRM** y crea la empresa, el contacto, los contratos y los servicios. Marca como `Visible to linked customer` sólo los datos que el cliente puede consultar.
+3. En **Dashboard → Integrations → Telegram → Link CRM contact**, selecciona el contacto. Automa crea un enlace de un solo uso que caduca en 15 minutos.
+4. Envía ese enlace al cliente. Al abrirlo, Telegram envía `/start automa_…` al webhook y el chat queda ligado a ese contacto.
+5. El cliente puede preguntar por sus servicios o contratos. Vercel carga en tiempo real únicamente los registros relacionados con ese contacto/empresa, llama al agente OpenAI seleccionado y devuelve la respuesta al mismo chat.
+6. La conversación y los eventos se conservan bajo la raíz del espacio (`users/{uid}` o `organizations/{orgId}`), junto a `telegramBindings` y `telegramPairings`, que son rutas sólo de servidor.
 
-En **Dashboard → Integrations → Telegram**, **Configure** guarda el username, el perfil empresarial, el agente que responderá y la URL pública. **Register webhook** registra la URL usando el token privado de Vercel (requiere que `TELEGRAM_OWNER_UID` coincida con la cuenta iniciada). **Check status** consulta Telegram sin mostrar el token y confirma si el token es válido, si el webhook apunta a la URL correcta, cuántos eventos están pendientes y si `TELEGRAM_OWNER_UID` coincide con la cuenta iniciada.
+En **Dashboard → Integrations → Telegram**, **Configure** guarda el username, el perfil empresarial, el agente que responderá y la URL pública. **Link CRM contact** genera el enlace seguro para cada cliente. **Register webhook** registra la URL usando el token privado de Vercel; el registro está permitido al propietario o administrador del espacio. **Check status** consulta Telegram sin mostrar el token y confirma si el token es válido, si el webhook apunta a la URL correcta y cuántos eventos están pendientes.
 
-La primera versión procesa mensajes de texto y mantiene respuestas de texto. No ejecuta pagos, no envía correos y no modifica sistemas externos. Los mensajes con fotos, audio o documentos se ignoran hasta añadir transcripción o análisis de archivos. Para varios propietarios habrá que sustituir `TELEGRAM_OWNER_UID` por un flujo de vinculación de cuentas.
+El webhook procesa mensajes de texto y mantiene respuestas de texto. Los mensajes de chats sin vínculo sólo reciben instrucciones para pedir un enlace; no llegan a OpenAI ni pueden consultar el CRM. El modelo recibe una lista limitada de campos aprobados: nunca recibe notas internas, credenciales, identificadores o datos de otros contactos. Los contratos y servicios se comparten sólo cuando están marcados como visibles para el cliente. Los mensajes con fotos, audio o documentos se ignoran hasta añadir transcripción o análisis de archivos.
 
 ## 7. Conectar Gmail y enviar correos HTML
 
@@ -491,7 +492,7 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 
 **OpenAI devuelve `401`.** La clave no está disponible para la función, está revocada o pertenece a otro proyecto. Revisa `OPENAI_API_KEY` en Vercel; nunca la pruebes desde el navegador.
 
-**Telegram no responde.** Abre **Dashboard → Integrations → Telegram → Check status**. Si el webhook aparece como `not registered` o `different URL`, ejecuta de nuevo `npm run telegram:set-webhook`; si el usuario propietario no coincide, corrige `TELEGRAM_OWNER_UID` con el UID de Firebase Authentication. Confirma que `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_OWNER_UID` y `TELEGRAM_AGENT_ID` existan en el mismo entorno de Vercel que el dominio público, que el bot esté conectado en Telegram Business y que el chat directo se haya iniciado con **START BOT**. Un token inválido o un secreto incorrecto produce `401`; una configuración incompleta produce `503`.
+**Telegram no responde.** Abre **Dashboard → Integrations → Telegram → Check status**. Si el webhook aparece como `not registered` o `different URL`, ejecuta de nuevo `npm run telegram:set-webhook`. Confirma que `TELEGRAM_BOT_TOKEN` y `TELEGRAM_WEBHOOK_SECRET` existan en el mismo entorno de Vercel que el dominio público, que el bot esté conectado en Telegram Business y que el cliente haya abierto un enlace nuevo de **Link CRM contact**. Un chat sin emparejamiento recibe un aviso y no consulta OpenAI; un enlace caducado debe generarse de nuevo. Un token inválido o un secreto incorrecto produce `401`; una configuración incompleta produce `503`.
 
 **Gmail muestra `Gmail is not configured`.** Confirma que las cuatro variables `GMAIL_*` estén en el mismo entorno de Vercel que el dominio público y redeploya. La URI de redirección debe coincidir exactamente con `https://automa.wstudio3d.com/api/gmail` en Google Cloud y en Vercel.
 

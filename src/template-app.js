@@ -15,7 +15,7 @@ const config = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {}, gmailIntegration = {};
-const crmState = { companies: [], contacts: [], opportunities: [], activities: [] };
+const crmState = { companies: [], contacts: [], opportunities: [], activities: [], contracts: [], services: [] };
 const DEFAULT_WORKSPACE_COLOR = '#0b2a4a';
 const INTEGRATION_CATALOG = Object.freeze({
   discord: { label: 'Discord', scope: 'Messages and escalation routing' },
@@ -152,7 +152,7 @@ function renderEntities(sectionId, rows) {
   }));
 }
 const crmStageLabels = Object.freeze({ lead: 'Lead', qualified: 'Qualified', proposal: 'Proposal', won: 'Won', lost: 'Lost' });
-const crmKindLabels = Object.freeze({ companies: 'Company', contacts: 'Contact', opportunities: 'Opportunity', activities: 'Activity' });
+const crmKindLabels = Object.freeze({ companies: 'Company', contacts: 'Contact', opportunities: 'Opportunity', activities: 'Activity', contracts: 'Contract', services: 'Service' });
 function crmCompanyName(id) { return crmState.companies.find(company => company.id === id)?.name || 'No company'; }
 function crmContactName(id) {
   const contact = crmState.contacts.find(item => item.id === id);
@@ -212,6 +212,28 @@ function renderCrm() {
   const activityList = $('crmActivities');
   if (activityList) {
     activityList.replaceChildren(...(activities.length ? activities.slice(0, 12).map(activity => { const item = document.createElement('div'); item.className = 'crm-activity'; const dot = document.createElement('span'); dot.className = 'crm-activity-dot'; const main = document.createElement('div'); main.style.minWidth = '0'; const subject = document.createElement('span'); subject.className = 'crm-record-name'; subject.textContent = activity.subject || 'CRM activity'; const meta = document.createElement('span'); meta.className = 'crm-record-meta'; meta.textContent = `${activity.type || 'task'} · ${crmCompanyName(activity.companyId)}${activity.dueDate ? ` · ${activity.dueDate}` : ''}`; main.append(subject, meta); item.append(dot, main); item.append(crmActionButton(activity.status === 'done' ? 'Done' : 'Edit', activity.status === 'done' ? 'fa-check' : 'fa-pencil', () => openCrmEditor('activities', activity.id, activity))); return item; }) : [Object.assign(document.createElement('div'), { className: 'crm-empty', textContent: 'No activities scheduled.' })]));
+  }
+  const contractList = $('crmContracts');
+  if (contractList) {
+    const rows = crmState.contracts.filter(row => crmMatches(row, search));
+    contractList.replaceChildren(...(rows.length ? rows.slice(0, 12).map(contract => {
+      const item = document.createElement('div'); item.className = 'crm-activity';
+      const main = document.createElement('div'); main.style.minWidth = '0';
+      const subject = document.createElement('span'); subject.className = 'crm-record-name'; subject.textContent = contract.name || 'Contract';
+      const meta = document.createElement('span'); meta.className = 'crm-record-meta'; meta.textContent = `${contract.status || 'draft'} · ${crmCompanyName(contract.companyId)}${contract.renewalDate ? ` · Renews ${contract.renewalDate}` : ''}${String(contract.customerVisible).toLowerCase() === 'true' ? ' · Customer visible' : ''}`;
+      main.append(subject, meta); item.append(main, crmActionButton('Edit', 'fa-pencil', () => openCrmEditor('contracts', contract.id, contract))); return item;
+    }) : [Object.assign(document.createElement('div'), { className: 'crm-empty', textContent: 'No contracts yet.' })]));
+  }
+  const serviceList = $('crmServices');
+  if (serviceList) {
+    const rows = crmState.services.filter(row => crmMatches(row, search));
+    serviceList.replaceChildren(...(rows.length ? rows.slice(0, 12).map(service => {
+      const item = document.createElement('div'); item.className = 'crm-activity';
+      const main = document.createElement('div'); main.style.minWidth = '0';
+      const subject = document.createElement('span'); subject.className = 'crm-record-name'; subject.textContent = service.name || 'Service';
+      const meta = document.createElement('span'); meta.className = 'crm-record-meta'; meta.textContent = `${service.status || 'draft'} · ${crmCompanyName(service.companyId)}${service.plan ? ` · ${service.plan}` : ''}${String(service.customerVisible).toLowerCase() === 'true' ? ' · Customer visible' : ''}`;
+      main.append(subject, meta); item.append(main, crmActionButton('Edit', 'fa-pencil', () => openCrmEditor('services', service.id, service))); return item;
+    }) : [Object.assign(document.createElement('div'), { className: 'crm-empty', textContent: 'No services yet.' })]));
   }
 }
 function resetCrmState() {
@@ -278,6 +300,19 @@ function telegramFields(integration = {}) {
     { key: 'webhookUrl', label: 'Webhook URL', type: 'url', value: integration.webhookUrl || `${window.location.origin}/api/telegram`, placeholder: 'https://automa.wstudio3d.com/api/telegram' }
   ];
 }
+window.openTelegramPairing = function openTelegramPairing() {
+  if (!currentUser) return showCrmNotice('Telegram client link', 'Sign in before linking a CRM contact.');
+  if (workspace.role === 'viewer') return showCrmNotice('Telegram client link', 'Viewer members have read-only access. Ask an Owner or Admin to create the secure link.');
+  if (!crmState.contacts.length) return showCrmNotice('Telegram client link', 'Create a CRM contact first, then generate a secure Telegram link for that contact.');
+  const options = crmState.contacts.map(contact => ({ value: contact.id, label: `${`${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Unnamed contact'}${crmCompanyName(contact.companyId) !== 'No company' ? ` · ${crmCompanyName(contact.companyId)}` : ''}` }));
+  return modal('Link a Telegram client', [
+    { type: 'note', value: 'Generate a one-time link that expires in 15 minutes. The customer opens it in Telegram to bind this chat to exactly one CRM contact. Automa will only expose that contact’s approved contracts and services; the bot token never appears here.' },
+    { key: 'contactId', label: 'CRM contact', type: 'select', value: options[0]?.value || '', options }
+  ], async data => {
+    const result = await callBusiness({ action: 'telegramPairingCreate', ...workspacePayload(), contactId: data.contactId });
+    showCrmNotice('Telegram client link created', `Send this one-time link to the selected customer before it expires:\n\n${result.deepLink}\n\nExpires: ${new Date(result.expiresAt).toLocaleString()}`);
+  });
+};
 function agentFields(agent = {}) {
   return [
     { key: 'name', label: 'Agent name', value: agent.name || '', placeholder: 'Support Agent' },
@@ -393,6 +428,27 @@ function crmFields(collection, seed = {}) {
     { key: 'owner', label: 'Opportunity owner', value: seed.owner || '', placeholder: 'Sales or account team' },
     { key: 'expectedClose', label: 'Expected close', type: 'date', value: seed.expectedClose || '' },
     { key: 'notes', label: 'Notes', type: 'textarea', rows: 3, value: seed.notes || '', placeholder: 'Decision process and blockers' }
+  ];
+  if (collection === 'contracts') return [
+    { key: 'name', label: 'Contract name', value: seed.name || '', placeholder: 'Annual services agreement' },
+    { key: 'companyId', label: 'Company', type: 'select', value: seed.companyId || '', options: crmOptions(crmState.companies, seed.companyId, 'company') },
+    { key: 'contactId', label: 'Primary contact', type: 'select', value: seed.contactId || '', options: crmOptions(crmState.contacts, seed.contactId, 'contact') },
+    { key: 'status', label: 'Status', type: 'select', value: seed.status || 'active', options: [{ value: 'active', label: 'Active' }, { value: 'draft', label: 'Draft' }, { value: 'expired', label: 'Expired' }] },
+    { key: 'startDate', label: 'Start date', type: 'date', value: seed.startDate || '' },
+    { key: 'endDate', label: 'End date', type: 'date', value: seed.endDate || '' },
+    { key: 'renewalDate', label: 'Renewal date', type: 'date', value: seed.renewalDate || '' },
+    { key: 'summary', label: 'Customer-safe summary', type: 'textarea', rows: 3, value: seed.summary || '', placeholder: 'Summary that the linked customer may see' },
+    { key: 'customerVisible', label: 'Visible to linked customer', type: 'select', value: seed.customerVisible || 'false', options: [{ value: 'true', label: 'Yes — share summary and dates' }, { value: 'false', label: 'No — keep private' }] }
+  ];
+  if (collection === 'services') return [
+    { key: 'name', label: 'Service name', value: seed.name || '', placeholder: 'Managed workflow operations' },
+    { key: 'companyId', label: 'Company', type: 'select', value: seed.companyId || '', options: crmOptions(crmState.companies, seed.companyId, 'company') },
+    { key: 'contactId', label: 'Primary contact', type: 'select', value: seed.contactId || '', options: crmOptions(crmState.contacts, seed.contactId, 'contact') },
+    { key: 'status', label: 'Status', type: 'select', value: seed.status || 'active', options: [{ value: 'active', label: 'Active' }, { value: 'paused', label: 'Paused' }, { value: 'ended', label: 'Ended' }] },
+    { key: 'plan', label: 'Plan', value: seed.plan || '', placeholder: 'Business' },
+    { key: 'description', label: 'Customer-safe description', type: 'textarea', rows: 3, value: seed.description || '', placeholder: 'Description that the linked customer may see' },
+    { key: 'renewalDate', label: 'Renewal date', type: 'date', value: seed.renewalDate || '' },
+    { key: 'customerVisible', label: 'Visible to linked customer', type: 'select', value: seed.customerVisible || 'false', options: [{ value: 'true', label: 'Yes — share service details' }, { value: 'false', label: 'No — keep private' }] }
   ];
   return [
     { key: 'type', label: 'Activity type', type: 'select', value: seed.type || 'task', options: [{ value: 'call', label: 'Call' }, { value: 'email', label: 'Email' }, { value: 'meeting', label: 'Meeting' }, { value: 'task', label: 'Task' }, { value: 'note', label: 'Note' }] },
@@ -556,7 +612,9 @@ async function runCrmAssist(task) {
     companies: project(crmState.companies, ['name', 'industry', 'owner', 'status']),
     contacts: project(crmState.contacts, ['firstName', 'lastName', 'companyId', 'role', 'email']),
     opportunities: project(crmState.opportunities, ['name', 'companyId', 'stage', 'amount', 'nextStep', 'owner']),
-    activities: project(crmState.activities, ['type', 'subject', 'companyId', 'opportunityId', 'dueDate', 'status'])
+    activities: project(crmState.activities, ['type', 'subject', 'companyId', 'opportunityId', 'dueDate', 'status']),
+    contracts: project(crmState.contracts, ['name', 'companyId', 'contactId', 'status', 'startDate', 'endDate', 'renewalDate', 'customerVisible']),
+    services: project(crmState.services, ['name', 'companyId', 'contactId', 'status', 'plan', 'renewalDate', 'customerVisible'])
   });
   try {
     const result = await callBusiness({ action: 'crmAssist', ...workspacePayload(), task, context, agentId: $('crmAgentSelect')?.value || 'data-analyzer' });
@@ -703,7 +761,7 @@ function wireWorkspace() {
   const deploy = [...(section('agents')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Deploy New Agent')); deploy?.addEventListener('click', () => openAgentEditor());
   add('automations', 'Create Automation', [{ key: 'name', label: 'Automation name', placeholder: 'Lead follow-up' }, { key: 'trigger', label: 'Trigger', placeholder: 'New lead' }], 'automations');
   document.querySelectorAll('[data-use-blueprint]').forEach(button => button.addEventListener('click', () => window.openAutomationBlueprint(button.dataset.useBlueprint)));
-  document.querySelectorAll('[data-crm-action]').forEach(button => button.addEventListener('click', () => openCrmEditor({ company: 'companies', contact: 'contacts', opportunity: 'opportunities', activity: 'activities' }[button.dataset.crmAction])));
+  document.querySelectorAll('[data-crm-action]').forEach(button => button.addEventListener('click', () => openCrmEditor({ company: 'companies', contact: 'contacts', opportunity: 'opportunities', activity: 'activities', contract: 'contracts', service: 'services' }[button.dataset.crmAction])));
   document.querySelectorAll('[data-crm-ai]').forEach(button => button.addEventListener('click', () => runCrmAssist(button.dataset.crmAi)));
   $('crmSearch')?.addEventListener('input', renderCrm);
   $('crmStageFilter')?.addEventListener('change', renderCrm);
@@ -728,7 +786,7 @@ function wireWorkspace() {
   telegramStatusButton?.addEventListener('click', async () => {
     telegramStatusButton.disabled = true;
     try {
-      const result = await callBusiness({ action: 'telegramStatus' });
+      const result = await callBusiness({ action: 'telegramStatus', ...workspacePayload() });
       const variableState = Object.entries(result.variables || {}).map(([name, present]) => `${name}: ${present ? 'set' : 'missing'}`).join('\n');
       const webhookState = result.webhook ? `\nWebhook URL: ${result.webhook.urlConfigured ? (result.webhook.urlMatches ? 'correct' : 'different URL') : 'not registered'}\nTarget URL: ${result.webhook.expectedUrl || 'not configured'}\nPending updates: ${result.webhook.pendingUpdates}${result.webhook.lastError ? `\nTelegram last error: ${result.webhook.lastError}` : ''}` : '';
       showCrmNotice(`${result.bot?.name || 'Telegram'}${result.bot?.username ? ` (@${result.bot.username})` : ''}`, `${result.error || result.code}${result.ownerUidMatches === false ? '\nTELEGRAM_OWNER_UID does not match the signed-in user.' : ''}${webhookState}\n\n${variableState}`);
@@ -740,11 +798,13 @@ function wireWorkspace() {
     if (!window.confirm('Register the Vercel webhook with Telegram now?')) return;
     telegramRegisterButton.disabled = true;
     try {
-      const result = await callBusiness({ action: 'telegramRegister' });
+      const result = await callBusiness({ action: 'telegramRegister', ...workspacePayload() });
       showCrmNotice('Telegram webhook', result.ok ? `Webhook registered at ${result.webhookUrl}. Open @WSTUDIO3DBot and press START BOT.` : `Telegram setup failed: ${result.code}`);
     } catch (error) { showCrmNotice('Telegram webhook', error.message || 'Telegram could not register the webhook.'); }
     finally { telegramRegisterButton.disabled = false; }
   });
+  const telegramPairButton = section('integrations')?.querySelector('[data-telegram-pair]');
+  telegramPairButton?.addEventListener('click', () => window.openTelegramPairing());
   const gmailConnectButton = section('integrations')?.querySelector('[data-gmail-connect]');
   gmailConnectButton?.addEventListener('click', async () => {
     gmailConnectButton.disabled = true;
@@ -776,7 +836,7 @@ function subscribe(user) {
   };
   watch('leads', rows => renderActivity(rows)); watch('tasks', rows => renderActivity(rows)); watch('runs', rows => renderActivity(rows));
   watch('agents', rows => renderEntities('agents', rows)); watch('automations', rows => renderEntities('automations', rows)); watch('integrations', rows => renderEntities('integrations', rows));
-  watch('companies', rows => { crmState.companies = rows; renderCrm(); }); watch('contacts', rows => { crmState.contacts = rows; renderCrm(); }); watch('opportunities', rows => { crmState.opportunities = rows; renderCrm(); }); watch('activities', rows => { crmState.activities = rows; renderCrm(); });
+  watch('companies', rows => { crmState.companies = rows; renderCrm(); }); watch('contacts', rows => { crmState.contacts = rows; renderCrm(); }); watch('opportunities', rows => { crmState.opportunities = rows; renderCrm(); }); watch('activities', rows => { crmState.activities = rows; renderCrm(); }); watch('contracts', rows => { crmState.contracts = rows; renderCrm(); }); watch('services', rows => { crmState.services = rows; renderCrm(); });
   wireWorkspace();
 }
 

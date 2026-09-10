@@ -11,14 +11,14 @@ service cloud.firestore {
       allow write: if false;
       match /{collection}/{document} {
         allow read: if organizationMember(orgId)
-          && collection in ['members', 'invitations', 'leads', 'tasks', 'runs', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities'];
+          && collection in ['members', 'invitations', 'leads', 'tasks', 'runs', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities', 'contracts', 'services'];
         allow write: if false;
       }
     }
 
     match /users/{uid}/{collection}/{document} {
       allow read: if request.auth != null && request.auth.uid == uid
-        && collection in ['leads', 'tasks', 'runs', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities'];
+        && collection in ['leads', 'tasks', 'runs', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities', 'contracts', 'services'];
       allow write: if false;
     }
   }

@@ -1,12 +1,14 @@
 import { isAllowedOpenAIModel } from '../shared/models.js';
 
 export class InputError extends Error {}
-const CRM_COLLECTIONS = ['companies', 'contacts', 'opportunities', 'activities'];
+const CRM_COLLECTIONS = ['companies', 'contacts', 'opportunities', 'activities', 'contracts', 'services'];
 const CRM_FIELDS = Object.freeze({
   companies: ['name', 'industry', 'website', 'size', 'owner', 'status', 'notes'],
   contacts: ['firstName', 'lastName', 'companyId', 'email', 'phone', 'role', 'status', 'notes'],
   opportunities: ['name', 'companyId', 'contactId', 'stage', 'amount', 'probability', 'nextStep', 'owner', 'expectedClose', 'notes'],
-  activities: ['type', 'subject', 'companyId', 'contactId', 'opportunityId', 'dueDate', 'status', 'notes']
+  activities: ['type', 'subject', 'companyId', 'contactId', 'opportunityId', 'dueDate', 'status', 'notes'],
+  contracts: ['name', 'companyId', 'contactId', 'status', 'startDate', 'endDate', 'renewalDate', 'summary', 'customerVisible'],
+  services: ['name', 'companyId', 'contactId', 'status', 'description', 'plan', 'renewalDate', 'customerVisible']
 });
 const CRM_ASSIST_TASKS = ['prioritize', 'summary', 'followup'];
 const ORGANIZATION_ROLES = ['admin', 'member', 'viewer'];
@@ -210,7 +212,7 @@ export function parseCommand(body) {
     if (CRM_COLLECTIONS.includes(collection)) {
       const allowedKeys = CRM_FIELDS[collection];
       if (Object.keys(data).some(key => !allowedKeys.includes(key))) throw new InputError('Campo CRM no permitido.');
-      const required = collection === 'companies' ? ['name'] : collection === 'contacts' ? ['firstName', 'lastName'] : collection === 'opportunities' ? ['name', 'stage'] : ['subject', 'type'];
+      const required = collection === 'companies' ? ['name'] : collection === 'contacts' ? ['firstName', 'lastName'] : collection === 'opportunities' ? ['name', 'stage'] : collection === 'activities' ? ['subject', 'type'] : ['name', 'status'];
       if (required.some(key => !data[key])) throw new InputError('Faltan datos CRM obligatorios.');
       if (data.name && data.name.length > 160) throw new InputError('Nombre CRM inválido.');
       if ((data.firstName && data.firstName.length > 80) || (data.lastName && data.lastName.length > 80)) throw new InputError('Nombre de contacto inválido.');
@@ -218,11 +220,25 @@ export function parseCommand(body) {
       if (data.website && !/^https:\/\//i.test(data.website)) throw new InputError('Sitio web CRM inválido.');
       if (collection === 'opportunities' && data.stage && !['lead', 'qualified', 'proposal', 'won', 'lost'].includes(data.stage)) throw new InputError('Etapa de oportunidad inválida.');
       if (collection === 'activities' && data.type && !['call', 'email', 'meeting', 'task', 'note'].includes(data.type)) throw new InputError('Tipo de actividad inválido.');
+      if (['contracts', 'services'].includes(collection) && data.customerVisible && !['true', 'false'].includes(data.customerVisible.toLowerCase())) throw new InputError('Visibilidad del cliente inválida.');
     }
-    if (collection === 'integrations' && data.provider?.toLowerCase() === 'telegram' && data.webhookUrl && !isAllowedTelegramWebhookUrl(data.webhookUrl)) throw new InputError('Webhook URL de Telegram inválida. Usa una URL HTTPS de Automa/Vercel que termine en /api/telegram.');
+    if (collection === 'integrations' && data.provider?.toLowerCase() === 'telegram') {
+      if (data.agentId && !/^[a-zA-Z0-9_-]{1,80}$/.test(data.agentId)) throw new InputError('Agente de Telegram inválido.');
+      if (data.webhookUrl && !isAllowedTelegramWebhookUrl(data.webhookUrl)) throw new InputError('Webhook URL de Telegram inválida. Usa una URL HTTPS de Automa/Vercel que termine en /api/telegram.');
+    }
     return { action: body.action, collection, id, orgId, data };
   }
-  if (body.action === 'telegramStatus' || body.action === 'telegramRegister') return { action: body.action };
+  if (body.action === 'telegramStatus' || body.action === 'telegramRegister') return { action: body.action, ...(body.orgId == null ? {} : { orgId: organizationId(body.orgId) }) };
+  if (body.action === 'telegramPairingCreate') {
+    const contactId = text(body.contactId, 'Contacto', 80);
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(contactId)) throw new InputError('Contacto inválido.');
+    return { action: body.action, contactId, orgId: body.orgId == null ? null : organizationId(body.orgId) };
+  }
+  if (body.action === 'telegramPairingRevoke') {
+    const pairingId = text(body.pairingId, 'Emparejamiento', 80);
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(pairingId)) throw new InputError('Emparejamiento inválido.');
+    return { action: body.action, pairingId, ...(body.orgId == null ? {} : { orgId: organizationId(body.orgId) }) };
+  }
   if (body.action === 'saveProfile') {
     const name = text(body.name, 'Nombre', 120);
     return { action: body.action, name };

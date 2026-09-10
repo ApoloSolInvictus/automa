@@ -5,6 +5,7 @@ import { getDefaultAgent } from '../shared/agents.js';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { createHash, randomBytes } from 'node:crypto';
 
 const DEFAULT_WORKSPACE_COLOR = '#0b2a4a';
 
@@ -12,21 +13,22 @@ function cleanEnv(value) {
   return typeof value === 'string' ? value.trim().replace(/^(["'])(.*)\1$/s, '$2').trim() : '';
 }
 
-async function telegramConfig(db, userUid) {
-  const saved = await db.collection('users').doc(userUid).collection('integrations').doc('telegram').get();
+async function telegramConfig(db, userUid, orgId = null) {
+  const root = orgId ? db.collection('organizations').doc(orgId) : db.collection('users').doc(userUid);
+  const saved = await root.collection('integrations').doc('telegram').get();
   return saved.exists ? saved.data() || {} : {};
 }
 
-async function telegramStatus(db, userUid) {
+async function telegramStatus(db, userUid, orgId = null) {
   const token = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
   const secret = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
   const ownerUid = cleanEnv(process.env.TELEGRAM_OWNER_UID);
   const agentId = cleanEnv(process.env.TELEGRAM_AGENT_ID) || 'support-bot-v2-1';
   const configuredUrl = cleanEnv(process.env.TELEGRAM_WEBHOOK_URL) || 'https://automa.wstudio3d.com/api/telegram';
-  const savedConfig = await telegramConfig(db, userUid);
+  const savedConfig = await telegramConfig(db, userUid, orgId);
   const webhookUrl = isAllowedTelegramWebhookUrl(savedConfig.webhookUrl) ? savedConfig.webhookUrl.trim() : configuredUrl;
-  const variables = { botToken: Boolean(token), webhookSecret: Boolean(secret), ownerUid: Boolean(ownerUid), agentId: Boolean(agentId), webhookUrl: Boolean(webhookUrl) };
-  if (!token) return { ok: false, code: 'telegram_not_configured', error: 'Add TELEGRAM_BOT_TOKEN in Vercel Production.', variables, ownerUidMatches: false };
+  const variables = { botToken: Boolean(token), webhookSecret: Boolean(secret), ownerUid: orgId ? true : Boolean(ownerUid), agentId: Boolean(agentId), webhookUrl: Boolean(webhookUrl) };
+  if (!token) return { ok: false, code: 'telegram_not_configured', error: 'Add TELEGRAM_BOT_TOKEN in Vercel Production.', variables, ownerUidMatches: orgId ? true : false };
   try {
     const [meResponse, webhookResponse] = await Promise.all([
       fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/getMe`, { signal: AbortSignal.timeout(8000) }),
@@ -41,7 +43,7 @@ async function telegramStatus(db, userUid) {
       ok: true,
       code: 'telegram_status_ok',
       variables,
-      ownerUidMatches: Boolean(ownerUid && ownerUid === userUid),
+      ownerUidMatches: orgId ? true : Boolean(ownerUid && ownerUid === userUid),
       bot: { username: me.result?.username || null, name: me.result?.first_name || null },
       webhook: {
         expectedUrl: webhookUrl,
@@ -54,20 +56,20 @@ async function telegramStatus(db, userUid) {
       agentId
     };
   } catch {
-    return { ok: false, code: 'telegram_unreachable', error: 'Telegram could not be reached from the Vercel function.', variables, ownerUidMatches: ownerUid === userUid };
+    return { ok: false, code: 'telegram_unreachable', error: 'Telegram could not be reached from the Vercel function.', variables, ownerUidMatches: orgId ? true : ownerUid === userUid };
   }
 }
 
-async function registerTelegramWebhook(db, userUid) {
+async function registerTelegramWebhook(db, userUid, orgId = null) {
   const token = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
   const secret = cleanEnv(process.env.TELEGRAM_WEBHOOK_SECRET);
   const ownerUid = cleanEnv(process.env.TELEGRAM_OWNER_UID);
   const configuredUrl = cleanEnv(process.env.TELEGRAM_WEBHOOK_URL) || 'https://automa.wstudio3d.com/api/telegram';
-  const savedConfig = await telegramConfig(db, userUid);
+  const savedConfig = await telegramConfig(db, userUid, orgId);
   const webhookUrl = isAllowedTelegramWebhookUrl(savedConfig.webhookUrl) ? savedConfig.webhookUrl.trim() : configuredUrl;
   if (!token || !secret) return { ok: false, code: 'telegram_not_configured', error: 'Add TELEGRAM_BOT_TOKEN and TELEGRAM_WEBHOOK_SECRET in Vercel Production.' };
   if (!isAllowedTelegramWebhookSecret(secret)) return { ok: false, code: 'telegram_webhook_secret_invalid', error: 'TELEGRAM_WEBHOOK_SECRET must be 1-256 characters using only A-Z, a-z, 0-9, underscore or hyphen.' };
-  if (!ownerUid || ownerUid !== userUid) return { ok: false, code: 'telegram_owner_mismatch', error: 'TELEGRAM_OWNER_UID must be the Firebase Authentication UID of the signed-in Dashboard user.' };
+  if (!orgId && (!ownerUid || ownerUid !== userUid)) return { ok: false, code: 'telegram_owner_mismatch', error: 'TELEGRAM_OWNER_UID must be the Firebase Authentication UID of the signed-in Dashboard user.' };
   if (!isAllowedTelegramWebhookUrl(webhookUrl)) return { ok: false, code: 'telegram_webhook_url_invalid', error: 'Set TELEGRAM_WEBHOOK_URL or the Dashboard webhook URL to a secure Automa/Vercel /api/telegram URL.' };
   try {
     const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/setWebhook`, {
@@ -111,6 +113,54 @@ async function services() {
 async function organizationAccess(db, orgId, uid) {
   const snapshot = await db.collection('organizations').doc(orgId).collection('members').doc(uid).get();
   return snapshot.exists ? snapshot.data() || {} : null;
+}
+function workspaceRoot(db, uid, orgId = null) {
+  return orgId ? db.collection('organizations').doc(orgId) : db.collection('users').doc(uid);
+}
+function telegramBotUsername(value) {
+  const username = cleanEnv(value).replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, '');
+  return username || cleanEnv(process.env.TELEGRAM_BOT_USERNAME).replace(/^@/, '').replace(/[^A-Za-z0-9_]/g, '') || 'WSTUDIO3DBot';
+}
+async function createTelegramPairing(db, FieldValue, root, uid, contactId) {
+  const contactSnapshot = await root.collection('contacts').doc(contactId).get();
+  if (!contactSnapshot.exists) return { status: 404, body: { error: 'Create the CRM contact before linking Telegram.', code: 'telegram_contact_not_found' } };
+  const contact = contactSnapshot.data() || {};
+  const rawCode = randomBytes(24).toString('base64url');
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  const pairingRef = root.collection('telegramPairings').doc();
+  const integrationSnapshot = await root.collection('integrations').doc('telegram').get();
+  const botUsername = telegramBotUsername(integrationSnapshot.data()?.botUsername);
+  await pairingRef.set({
+    codeHash: createHash('sha256').update(rawCode).digest('hex'),
+    status: 'pending',
+    contactId,
+    companyId: typeof contact.companyId === 'string' && contact.companyId ? contact.companyId : null,
+    createdBy: uid,
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAt
+  });
+  return {
+    status: 201,
+    body: {
+      ok: true,
+      code: 'telegram_pairing_created',
+      pairingId: pairingRef.id,
+      deepLink: `https://t.me/${botUsername}?start=automa_${rawCode}`,
+      expiresAt: expiresAt.toISOString(),
+      contact: { id: contactId, firstName: contact.firstName || '', lastName: contact.lastName || '' }
+    }
+  };
+}
+async function revokeTelegramPairing(db, root, pairingId) {
+  const ref = root.collection('telegramPairings').doc(pairingId);
+  const snapshot = await ref.get();
+  if (!snapshot.exists) return { status: 404, body: { error: 'Pairing link not found.', code: 'telegram_pairing_not_found' } };
+  const data = snapshot.data() || {};
+  const batch = db.batch();
+  batch.set(ref, { status: 'revoked', revokedAt: new Date() }, { merge: true });
+  if (typeof data.bindingKey === 'string' && /^[a-f0-9]{64}$/.test(data.bindingKey)) batch.set(root.collection('telegramBindings').doc(data.bindingKey), { status: 'revoked', revokedAt: new Date(), updatedAt: new Date() }, { merge: true });
+  await batch.commit();
+  return { status: 200, body: { ok: true, code: 'telegram_pairing_revoked' } };
 }
 async function organizationList(db, uid) {
   const memberships = await db.collection('users').doc(uid).collection('memberships').get();
@@ -185,7 +235,7 @@ async function acceptOrganizationInvitations(db, FieldValue, uid, email, request
   if (accepted.length) await batch.commit();
   return accepted;
 }
-const DEMO_COLLECTIONS = ['leads', 'tasks', 'runs', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities'];
+const DEMO_COLLECTIONS = ['leads', 'tasks', 'runs', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities', 'contracts', 'services'];
 function demoDocuments() {
   return [
     ['leads', 'demo-lead-1', { name: 'Jordan Lee', email: 'jordan.lee@example.com', value: 18500, message: 'Interested in automating client onboarding.' }],
@@ -214,7 +264,9 @@ function demoDocuments() {
     ['opportunities', 'demo-opportunity-1', { name: 'Northstar intake automation', companyId: 'demo-company-1', contactId: 'demo-contact-1', stage: 'proposal', amount: '18500', probability: '65', nextStep: 'Review the proposal with operations', owner: 'Avery Chen', expectedClose: '2026-09-30', notes: 'Proposal sent for workflow discovery and implementation.' }],
     ['opportunities', 'demo-opportunity-2', { name: 'Brightline scheduling workflow', companyId: 'demo-company-2', contactId: 'demo-contact-2', stage: 'qualified', amount: '32000', probability: '40', nextStep: 'Confirm calendar requirements', owner: 'Morgan Diaz', expectedClose: '2026-10-15', notes: 'Qualified opportunity awaiting discovery call.' }],
     ['activities', 'demo-activity-1', { type: 'meeting', subject: 'Northstar workflow discovery', companyId: 'demo-company-1', contactId: 'demo-contact-1', opportunityId: 'demo-opportunity-1', dueDate: '2026-09-12', status: 'pending', notes: 'Map the current client intake steps.' }],
-    ['activities', 'demo-activity-2', { type: 'email', subject: 'Send Brightline next steps', companyId: 'demo-company-2', contactId: 'demo-contact-2', opportunityId: 'demo-opportunity-2', dueDate: '2026-09-13', status: 'pending', notes: 'Share the approved discovery checklist.' }]
+    ['activities', 'demo-activity-2', { type: 'email', subject: 'Send Brightline next steps', companyId: 'demo-company-2', contactId: 'demo-contact-2', opportunityId: 'demo-opportunity-2', dueDate: '2026-09-13', status: 'pending', notes: 'Share the approved discovery checklist.' }],
+    ['contracts', 'demo-contract-1', { name: 'Northstar automation services agreement', companyId: 'demo-company-1', contactId: 'demo-contact-1', status: 'active', startDate: '2026-01-01', endDate: '2026-12-31', renewalDate: '2026-12-01', summary: 'Annual workflow automation and support agreement.', customerVisible: 'true' }],
+    ['services', 'demo-service-1', { name: 'Automa Workflow Operations', companyId: 'demo-company-1', contactId: 'demo-contact-1', status: 'active', description: 'Managed customer intake, contract routing and follow-up automation.', plan: 'Business', renewalDate: '2026-12-01', customerVisible: 'true' }]
   ];
 }
 async function seedDemoData(db, FieldValue, root) {
@@ -240,7 +292,7 @@ async function clearDemoData(db, root) {
   }
   return references.length;
 }
-const WORKSPACE_DATA_COLLECTIONS = ['leads', 'tasks', 'runs', 'internal', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities', 'emailTemplates', 'channels', 'private'];
+const WORKSPACE_DATA_COLLECTIONS = ['leads', 'tasks', 'runs', 'internal', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities', 'contracts', 'services', 'telegramPairings', 'telegramBindings', 'emailTemplates', 'channels', 'private'];
 async function collectWorkspaceReferences(collectionRef, references) {
   for (const documentRef of await collectionRef.listDocuments()) {
     for (const subcollection of await documentRef.listCollections()) await collectWorkspaceReferences(subcollection, references);
@@ -336,10 +388,22 @@ export default async function handler(req, res) {
       const result = await requestOpenAI({ message: `<crm_snapshot>\n${cmd.context}\n</crm_snapshot>`, history: [] }, { model, instructions });
       return res.status(result.status).json({ ...result.body, agentId: requestedAgentId, agent: agent.name || 'Automa CRM Copilot' });
     }
-    if (cmd.action === 'telegramStatus') return res.status(200).json(await telegramStatus(db, user.uid));
-    if (cmd.action === 'telegramRegister') {
-      const result = await registerTelegramWebhook(db, user.uid);
-      return res.status(result.ok ? 200 : result.code === 'telegram_owner_mismatch' ? 409 : 503).json(result);
+    if (cmd.action === 'telegramStatus' || cmd.action === 'telegramRegister' || cmd.action === 'telegramPairingCreate' || cmd.action === 'telegramPairingRevoke') {
+      const root = workspaceRoot(db, user.uid, cmd.orgId);
+      const membership = cmd.orgId ? await organizationAccess(db, cmd.orgId, user.uid) : null;
+      if (cmd.orgId && !membership) return res.status(403).json({ error: 'You are not a member of this organization.', code: 'organization_forbidden' });
+      if (cmd.action === 'telegramPairingCreate' || cmd.action === 'telegramPairingRevoke' || cmd.action === 'telegramRegister') {
+        if (cmd.orgId && !['owner', 'admin'].includes(membership.role)) return res.status(403).json({ error: 'Only an organization owner or admin can manage Telegram.', code: 'organization_forbidden' });
+      }
+      if (cmd.action === 'telegramStatus') return res.status(200).json(await telegramStatus(db, user.uid, cmd.orgId));
+      if (cmd.action === 'telegramRegister') {
+        const result = await registerTelegramWebhook(db, user.uid, cmd.orgId);
+        return res.status(result.ok ? 200 : result.code === 'telegram_owner_mismatch' ? 409 : 503).json(result);
+      }
+      const result = cmd.action === 'telegramPairingCreate'
+        ? await createTelegramPairing(db, FieldValue, root, user.uid, cmd.contactId)
+        : await revokeTelegramPairing(db, root, cmd.pairingId);
+      return res.status(result.status).json(result.body);
     }
     const root = cmd.orgId ? db.collection('organizations').doc(cmd.orgId) : db.collection('users').doc(user.uid);
     const membership = cmd.orgId ? await organizationAccess(db, cmd.orgId, user.uid) : null;
