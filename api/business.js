@@ -51,7 +51,8 @@ async function telegramStatus(db, userUid, orgId = null) {
         urlMatches: configuredUrl === webhookUrl,
         pendingUpdates: Number.isInteger(info.pending_update_count) ? info.pending_update_count : 0,
         hasLastError: Boolean(info.last_error_message),
-        lastError: typeof info.last_error_message === 'string' ? info.last_error_message.slice(0, 240) : null
+        lastError: typeof info.last_error_message === 'string' ? info.last_error_message.slice(0, 240) : null,
+        lastErrorDate: Number.isInteger(info.last_error_date) ? new Date(info.last_error_date * 1000).toISOString() : null
       },
       agentId
     };

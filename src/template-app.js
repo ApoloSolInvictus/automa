@@ -805,7 +805,8 @@ function wireWorkspace() {
     try {
       const result = await callBusiness({ action: 'telegramStatus', ...workspacePayload() });
       const variableState = Object.entries(result.variables || {}).map(([name, present]) => `${name}: ${present ? 'set' : 'missing'}`).join('\n');
-      const webhookState = result.webhook ? `\nWebhook URL: ${result.webhook.urlConfigured ? (result.webhook.urlMatches ? 'correct' : 'different URL') : 'not registered'}\nTarget URL: ${result.webhook.expectedUrl || 'not configured'}\nPending updates: ${result.webhook.pendingUpdates}${result.webhook.lastError ? `\nTelegram last error: ${result.webhook.lastError}` : ''}` : '';
+      const lastErrorDate = result.webhook?.lastErrorDate ? new Date(result.webhook.lastErrorDate).toLocaleString() : '';
+      const webhookState = result.webhook ? `\nWebhook URL: ${result.webhook.urlConfigured ? (result.webhook.urlMatches ? 'correct' : 'different URL') : 'not registered'}\nTarget URL: ${result.webhook.expectedUrl || 'not configured'}\nPending updates: ${result.webhook.pendingUpdates}${result.webhook.lastError ? `\nLast recorded Telegram error${lastErrorDate ? ` (${lastErrorDate})` : ''}: ${result.webhook.lastError}` : ''}` : '';
       showCrmNotice(`${result.bot?.name || 'Telegram'}${result.bot?.username ? ` (@${result.bot.username})` : ''}`, `${result.error || result.code}${result.ownerUidMatches === false ? '\nTELEGRAM_OWNER_UID does not match the signed-in user.' : ''}${webhookState}\n\n${variableState}`);
     } catch (error) { showCrmNotice('Telegram status', error.message || 'Telegram status could not be checked.'); }
     finally { telegramStatusButton.disabled = false; }
