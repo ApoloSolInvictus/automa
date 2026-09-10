@@ -17,6 +17,14 @@ const config = {
 let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {}, gmailIntegration = {};
 const crmState = { companies: [], contacts: [], opportunities: [], activities: [] };
 const DEFAULT_WORKSPACE_COLOR = '#0b2a4a';
+const INTEGRATION_CATALOG = Object.freeze({
+  discord: { label: 'Discord', scope: 'Messages and escalation routing' },
+  github: { label: 'GitHub', scope: 'Repository events, issues, and pull requests' },
+  'google-drive': { label: 'Google Drive', scope: 'Approved folders and document context' },
+  'google-docs': { label: 'Google Docs', scope: 'Contract and client document actions' },
+  'google-calendar': { label: 'Google Calendar', scope: 'Availability and follow-up events' },
+  'google-sheets': { label: 'Google Sheets', scope: 'CRM and workflow activity logs' }
+});
 let currentUser = null;
 let workspace = { id: null, name: 'Personal workspace', color: DEFAULT_WORKSPACE_COLOR, role: 'owner', members: [], pendingInvites: [] };
 let workspaceOptions = [workspace];
@@ -117,6 +125,13 @@ function renderEntities(sectionId, rows) {
     gmailIntegration = rows.find(row => row.id === 'gmail' || row.provider?.toLowerCase() === 'gmail') || {};
     const badge = host.querySelector('[data-telegram-status-label]');
     if (badge && telegramIntegration.status) badge.textContent = telegramIntegration.status;
+    rows.forEach(row => {
+      const card = [...host.querySelectorAll('[data-integration-id]')].find(item => item.dataset.integrationId === row.id);
+      if (!card) return;
+      card.dataset.integrationStatus = row.status || 'Available';
+      const statusLabel = card.querySelector('[data-integration-status-label]');
+      if (statusLabel) statusLabel.textContent = row.status || 'Available';
+    });
     if (gmailIntegration.status) updateGmailUi({ connected: gmailIntegration.status === 'Connected', status: gmailIntegration.status, email: gmailIntegration.email || '' });
   }
   let list = host.querySelector('.nexus-live-list');
@@ -692,7 +707,7 @@ function wireWorkspace() {
   document.querySelectorAll('[data-crm-ai]').forEach(button => button.addEventListener('click', () => runCrmAssist(button.dataset.crmAi)));
   $('crmSearch')?.addEventListener('input', renderCrm);
   $('crmStageFilter')?.addEventListener('change', renderCrm);
-  add('integrations', 'Add Integration', [{ key: 'provider', label: 'Provider', placeholder: 'Slack, Notion, CRM...' }, { key: 'status', label: 'Status', placeholder: 'Connected' }], 'integrations');
+  add('integrations', 'Add Integration', [{ key: 'provider', label: 'Provider', placeholder: 'Google Workspace, Discord, GitHub...' }, { key: 'status', label: 'Status', placeholder: 'Available' }, { key: 'scope', label: 'Approved scope', placeholder: 'What this connection can read or update' }], 'integrations');
   const save = [...(section('settings')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Save Changes')); save?.addEventListener('click', async () => { try { await callBusiness({ action: 'saveProfile', name: $('profileName')?.value.trim() || 'Automa user' }); save.textContent = 'Saved'; setTimeout(() => save.textContent = 'Save Changes', 1500); } catch (e) { showCrmNotice('Settings', e.message || 'The settings could not be saved.'); } });
   section('agents')?.querySelectorAll('.agent-card').forEach(card => {
     const id = card.dataset.agentId; const seed = getDefaultAgent(id) || {};
@@ -705,7 +720,9 @@ function wireWorkspace() {
       btn.addEventListener('click', () => modal('Configure Telegram', telegramFields(telegramIntegration), data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection: 'integrations', id: 'telegram', data: { ...data, provider: 'telegram' } })));
       return;
     }
-    btn.addEventListener('click', () => modal('Configure Integration', [{ key: 'status', label: 'Status', value: 'Connected' }, { key: 'notes', label: 'Notes' }], data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection: 'integrations', data })));
+    const integrationId = card?.dataset.integrationId || '';
+    const catalog = INTEGRATION_CATALOG[integrationId] || { label: card?.querySelector('.fw-semibold')?.textContent?.trim() || 'Integration', scope: '' };
+    btn.addEventListener('click', () => modal(`Configure ${catalog.label}`, [{ key: 'provider', label: 'Provider', value: catalog.label, readonly: true }, { key: 'status', label: 'Connection status', type: 'select', value: card?.dataset.integrationStatus || 'Available', options: [{ value: 'Available', label: 'Available' }, { value: 'Connected', label: 'Connected' }, { value: 'Paused', label: 'Paused' }] }, { key: 'scope', label: 'Approved scope', value: catalog.scope, placeholder: catalog.scope }, { key: 'notes', label: 'Notes', placeholder: 'How this connection should be used in a workflow' }], data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection: 'integrations', id: integrationId || undefined, data })));
   });
   const telegramStatusButton = section('integrations')?.querySelector('[data-telegram-status]');
   telegramStatusButton?.addEventListener('click', async () => {

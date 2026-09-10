@@ -23,6 +23,11 @@ try {
   assert.equal(await page.locator('#dashboard').isVisible(),false);
   const landingOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   assert.ok(landingOverflow <= 1, `${name} landing should not overflow horizontally`);
+  for (const integration of ['Telegram', 'Discord', 'GitHub', 'Gmail', 'Google Drive', 'Google Docs', 'Google Calendar', 'Google Sheets']) {
+   assert.equal(await page.locator('#integrations').getByText(integration, { exact: true }).count(), 1, `${name} landing should list ${integration}`);
+  }
+  assert.equal(await page.locator('#pricing .pv[data-m="49"]').count(), 1, `${name} landing should show the $49 Starter price`);
+  assert.equal(await page.locator('#pricing .pv[data-m="149"]').count(), 1, `${name} landing should show the $149 Pro price`);
   await page.evaluate(() => {
    document.querySelector('#landing').style.display = 'none';
    document.querySelector('#dashboard').style.display = 'block';

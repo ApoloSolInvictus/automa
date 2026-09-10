@@ -445,6 +445,16 @@ Después de cambiar el scope desde `gmail.send` a `gmail.modify`, pulsa **Discon
 
 El servidor rechaza scripts, iframes, formularios, URLs `javascript:` o `data:`, asuntos con saltos de línea y destinatarios repetidos. El historial guarda solo metadatos mínimos del envío en `runs`; no guarda el HTML ni tokens OAuth. Las plantillas guardan el HTML, el asunto y el modelo para volver a usarlos. **Disconnect** elimina de Automa el token de Gmail de ese espacio. El restablecimiento local o global también elimina las plantillas y `private/gmail`.
 
+### 7.4 Flujo de Google Workspace e integraciones
+
+El catálogo de Integrations mantiene un flujo común para canales y herramientas de trabajo:
+
+`Telegram o Discord → Drive/Docs → Calendar → Sheets → Gmail`
+
+Telegram, Discord, GitHub, Gmail, Google Drive, Google Docs, Google Calendar y Google Sheets se muestran con su alcance separado por espacio de trabajo. La opción **Configure** guarda el proveedor, el estado, el alcance aprobado y las notas de uso en `integrations`, para que cada paso pueda documentarse antes de activarlo en una automatización. Gmail conserva las acciones conectadas de OAuth (borradores HTML, revisión de bandeja, respuestas y envío). Las APIs de Drive, Docs, Calendar y Sheets deben habilitarse en Google Cloud y añadirse a la autorización OAuth antes de ejecutar acciones de lectura o escritura sobre esos servicios.
+
+El landing usa los precios Starter de **$49/mes** y Pro de **$149/mes**. El selector anual conserva el descuento del 30% y muestra $34 y $104 al mes, respectivamente.
+
 ## 8. Pruebas y verificación
 
 ```sh
