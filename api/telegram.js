@@ -298,26 +298,41 @@ async function consumePairing(db, incoming, rawCode) {
   const root = rootFromScopedRef(candidate.ref);
   if (!root) return null;
   const bindingKey = telegramBindingKey(incoming.chatId, incoming.businessConnectionId);
+  const pairingData = candidate.data() || {};
+  const ownerPairing = pairingData.type === 'owner' && typeof pairingData.ownerUid === 'string' && pairingData.ownerUid;
   const existing = await queryTelegramScopes(db, 'telegramBindings', 'bindingKey', bindingKey);
-  const activeExisting = existing.find(doc => doc.data()?.status === 'active');
-  if (activeExisting) throw Object.assign(new Error('TELEGRAM_BINDING_CONFLICT'), { code: 'telegram_binding_conflict' });
+  const activeExisting = existing.filter(doc => doc.data()?.status === 'active');
+  // An owner pairing is an explicit, short-lived administrator action. It may
+  // replace a stale customer binding in the same workspace, while bindings in
+  // another workspace remain protected against account hijacking.
+  const conflictingBinding = activeExisting.find(doc => {
+    if (!ownerPairing) return true;
+    const existingRoot = rootFromScopedRef(doc.ref);
+    return !existingRoot || existingRoot.path !== root.path;
+  });
+  if (conflictingBinding) throw Object.assign(new Error('TELEGRAM_BINDING_CONFLICT'), { code: 'telegram_binding_conflict' });
   const bindingRef = root.collection('telegramBindings').doc(bindingKey);
   await db.runTransaction(async transaction => {
     const current = await transaction.get(candidate.ref);
+    const currentBinding = await transaction.get(bindingRef);
     if (!current.exists || current.data()?.status !== 'pending' || isExpired(current.data()?.expiresAt)) throw Object.assign(new Error('TELEGRAM_PAIRING_EXPIRED'), { code: 'telegram_pairing_expired' });
     const data = current.data() || {};
-    const ownerPairing = data.type === 'owner' && typeof data.ownerUid === 'string' && data.ownerUid;
+    const currentOwnerPairing = data.type === 'owner' && typeof data.ownerUid === 'string' && data.ownerUid;
+    if (currentBinding.exists && currentBinding.data()?.status === 'active' && !currentOwnerPairing) {
+      throw Object.assign(new Error('TELEGRAM_BINDING_CONFLICT'), { code: 'telegram_binding_conflict' });
+    }
     transaction.set(bindingRef, {
       bindingKey,
       chatId: incoming.chatId,
       businessConnectionId: incoming.businessConnectionId || null,
-      scope: ownerPairing ? 'owner' : 'customer',
-      ownerUid: ownerPairing ? data.ownerUid : null,
-      contactId: ownerPairing ? null : data.contactId,
-      companyId: ownerPairing ? null : data.companyId || null,
+      scope: currentOwnerPairing ? 'owner' : 'customer',
+      ownerUid: currentOwnerPairing ? data.ownerUid : null,
+      contactId: currentOwnerPairing ? null : data.contactId,
+      companyId: currentOwnerPairing ? null : data.companyId || null,
       status: 'active',
       pairedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(currentOwnerPairing && currentBinding.exists ? { replacedAt: FieldValue.serverTimestamp() } : {})
     }, { merge: true });
     transaction.update(candidate.ref, { status: 'used', usedAt: FieldValue.serverTimestamp(), chatId: incoming.chatId, bindingKey });
   });
