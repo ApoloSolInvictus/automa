@@ -245,7 +245,7 @@ async function findBinding(db, incoming) {
       const root = rootFromScopedRef(match.ref);
       return root ? { ref: match.ref, root, binding: match.data() || {} } : null;
     }
-    return null;
+    return migrateBusinessBinding(db, incoming);
   } catch (error) {
     // Collection-group indexes are not deployed by Vercel. Fall back to the
     // deterministic binding document path so a missing index never becomes a
@@ -254,10 +254,55 @@ async function findBinding(db, incoming) {
     const roots = await telegramWorkspaceRoots(db);
     const snapshots = await Promise.all(roots.map(root => root.collection('telegramBindings').doc(key).get()));
     const match = snapshots.find(matches);
-    if (!match) return null;
+    if (!match) return migrateBusinessBinding(db, incoming);
     const root = rootFromScopedRef(match.ref);
     return root ? { ref: match.ref, root, binding: match.data() || {} } : null;
   }
+}
+
+async function migrateBusinessBinding(db, incoming) {
+  if (!incoming.businessConnectionId) return null;
+  const candidates = await queryTelegramScopes(db, 'telegramBindings', 'chatId', incoming.chatId);
+  const active = candidates.filter(doc => {
+    const data = doc.data() || {};
+    return data.status === 'active'
+      && String(data.chatId) === incoming.chatId
+      && String(data.businessConnectionId || '') !== incoming.businessConnectionId;
+  });
+  // A chat can only be migrated automatically when there is exactly one
+  // authorized source binding. Multiple workspaces require a fresh pairing.
+  if (active.length !== 1) return null;
+  const source = active[0];
+  const root = rootFromScopedRef(source.ref);
+  if (!root) return null;
+  const bindingKey = telegramBindingKey(incoming.chatId, incoming.businessConnectionId);
+  const targetRef = root.collection('telegramBindings').doc(bindingKey);
+  await db.runTransaction(async transaction => {
+    const current = await transaction.get(source.ref);
+    const target = await transaction.get(targetRef);
+    const data = current.data() || {};
+    if (!current.exists || data.status !== 'active' || String(data.chatId) !== incoming.chatId) return;
+    if (target.exists && target.data()?.status === 'active') return;
+    transaction.set(targetRef, {
+      bindingKey,
+      chatId: incoming.chatId,
+      businessConnectionId: incoming.businessConnectionId,
+      scope: data.scope === 'owner' ? 'owner' : 'customer',
+      ownerUid: typeof data.ownerUid === 'string' ? data.ownerUid : null,
+      contactId: typeof data.contactId === 'string' ? data.contactId : null,
+      companyId: typeof data.companyId === 'string' ? data.companyId : null,
+      status: 'active',
+      pairedAt: data.pairedAt || FieldValue.serverTimestamp(),
+      migratedFrom: source.ref.id,
+      migratedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    transaction.update(source.ref, { status: 'migrated', migratedTo: bindingKey, migratedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+  });
+  const migrated = await targetRef.get();
+  return migrated.exists && migrated.data()?.status === 'active'
+    ? { ref: targetRef, root, binding: migrated.data() || {} }
+    : null;
 }
 
 async function telegramWorkspaceRoots(db) {

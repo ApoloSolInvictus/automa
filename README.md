@@ -398,6 +398,8 @@ El script llama a `setWebhook` con `https://automa.wstudio3d.com/api/telegram`, 
 5. El cliente puede preguntar por sus servicios o contratos. Vercel carga en tiempo real únicamente los registros relacionados con ese contacto/empresa, llama al agente OpenAI seleccionado y devuelve la respuesta al mismo chat.
 6. La conversación y los eventos se conservan bajo la raíz del espacio (`users/{uid}` o `organizations/{orgId}`), junto a `telegramBindings` y `telegramPairings`, que son rutas sólo de servidor.
 
+Si Telegram Business asigna un `business_connection_id` nuevo al reconectar el bot, Automa migra automáticamente un vínculo autorizado cuando existe una sola coincidencia para ese chat dentro de los workspaces del propietario. Conserva el alcance del cliente o propietario y no migra chats ambiguos entre workspaces; esos chats requieren un nuevo enlace seguro.
+
 Para vincular tu propio bot a la cuenta propietaria, inicia sesión con `ronnywoods77@gmail.com` (o con la cuenta propietaria correspondiente) y usa **Dashboard → Integrations → Telegram → Link my Telegram account**. Automa genera un enlace distinto de un solo uso; ábrelo con el bot nuevo antes de 15 minutos. En el workspace personal, `TELEGRAM_OWNER_UID` debe coincidir con el UID de esa sesión. En una organización, sólo el Owner o Admin puede crear el enlace. El vínculo de propietario permite consultar los campos CRM seguros de ese workspace; nunca expone tokens, credenciales ni notas privadas.
 
 ### 6.4 Registrar un cliente nuevo desde Telegram
