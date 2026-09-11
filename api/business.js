@@ -360,7 +360,7 @@ async function clearDemoData(db, root) {
   }
   return references.length;
 }
-const WORKSPACE_DATA_COLLECTIONS = ['leads', 'tasks', 'runs', 'internal', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities', 'contracts', 'services', 'telegramPairings', 'telegramBindings', 'telegramIntakes', 'telegramIntakeSessions', 'emailTemplates', 'channels', 'private'];
+const WORKSPACE_DATA_COLLECTIONS = ['leads', 'tasks', 'runs', 'internal', 'settings', 'agents', 'automations', 'integrations', 'companies', 'contacts', 'opportunities', 'activities', 'contracts', 'services', 'telegramPairings', 'telegramBindings', 'telegramIntakes', 'telegramIntakeSessions', 'telegramVerificationSessions', 'emailTemplates', 'channels', 'private'];
 async function collectWorkspaceReferences(collectionRef, references) {
   for (const documentRef of await collectionRef.listDocuments()) {
     for (const subcollection of await documentRef.listCollections()) await collectWorkspaceReferences(subcollection, references);

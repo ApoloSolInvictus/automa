@@ -400,6 +400,8 @@ El script llama a `setWebhook` con `https://automa.wstudio3d.com/api/telegram`, 
 
 Si Telegram Business asigna un `business_connection_id` nuevo al reconectar el bot, Automa migra automáticamente un vínculo autorizado cuando existe una sola coincidencia para ese chat dentro de los workspaces del propietario. Conserva el alcance del cliente o propietario y no migra chats ambiguos entre workspaces; esos chats requieren un nuevo enlace seguro.
 
+Los chats sin vínculo también pueden usar el asistente general de Automa. Para consultar datos de un perfil CRM, el usuario debe responder `/verify` y completar el formulario con el correo, teléfono y nombre completo normalizados contra un único contacto del CRM. Las respuestas se guardan temporalmente como hashes, se eliminan al completar la verificación y habilitan sólo los campos CRM seguros; nunca se entregan credenciales, tokens, notas privadas ni identificadores internos.
+
 Para vincular tu propio bot a la cuenta propietaria, inicia sesión con `ronnywoods77@gmail.com` (o con la cuenta propietaria correspondiente) y usa **Dashboard → Integrations → Telegram → Link my Telegram account**. Automa genera un enlace distinto de un solo uso; ábrelo con el bot nuevo antes de 15 minutos. En el workspace personal, `TELEGRAM_OWNER_UID` debe coincidir con el UID de esa sesión. En una organización, sólo el Owner o Admin puede crear el enlace. El vínculo de propietario permite consultar los campos CRM seguros de ese workspace; nunca expone tokens, credenciales ni notas privadas.
 
 ### 6.4 Registrar un cliente nuevo desde Telegram

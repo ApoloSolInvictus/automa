@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import telegramHandler, { buildTelegramCrmContext, parseTelegramIntakeAnswer, parseTelegramIntakeCode, parseTelegramPairingCode, parseTelegramUpdate, splitTelegramText, telegramBindingKey, webhookSecretMatches } from '../api/telegram.js';
+import telegramHandler, { buildTelegramCrmContext, parseTelegramIntakeAnswer, parseTelegramIntakeCode, parseTelegramPairingCode, parseTelegramUpdate, parseTelegramVerificationAnswer, parseTelegramVerificationCommand, splitTelegramText, telegramBindingKey, webhookSecretMatches } from '../api/telegram.js';
 
 function response() {
   return {
@@ -62,6 +62,19 @@ test('parses one-time Telegram pairing commands and scopes CRM context', () => {
   assert.equal(ownerContext.contacts[0].email, undefined);
   assert.equal(ownerContext.companies[0].name, 'Acme');
   assert.equal(ownerContext.contracts[0].name, 'Agreement');
+  assert.equal(parseTelegramVerificationCommand('/verify'), 'verify');
+  assert.equal(parseTelegramVerificationCommand('/verificar@WSTUDIO3DBot'), 'verify');
+  assert.equal(parseTelegramVerificationCommand('/verify now'), null);
+  assert.equal(parseTelegramVerificationAnswer('email', 'person@example.com').ok, true);
+  assert.equal(parseTelegramVerificationAnswer('phone', '+1 (555) 0101').ok, true);
+  assert.equal(parseTelegramVerificationAnswer('fullName', 'Alex Morgan').ok, true);
+  assert.equal(parseTelegramVerificationAnswer('fullName', 'Alex').ok, false);
+  const verifiedContext = JSON.parse(buildTelegramCrmContext({
+    contacts: [{ id: 'contact-1', firstName: 'Alex', lastName: 'Morgan', companyId: 'company-1' }],
+    contracts: [{ id: 'contract-1', contactId: 'contact-1', name: 'Internal agreement', status: 'draft', customerVisible: false }],
+    services: []
+  }, { contactId: 'contact-1', companyId: 'company-1', verificationLevel: 'crm' }));
+  assert.deepEqual(verifiedContext.contracts.map(item => item.name), ['Internal agreement']);
   assert.equal(telegramBindingKey('123'), telegramBindingKey('123'));
   assert.notEqual(telegramBindingKey('123'), telegramBindingKey('124'));
 });

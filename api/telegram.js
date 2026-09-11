@@ -55,6 +55,51 @@ export function parseTelegramIntakeCode(value) {
   return match ? match[1] : null;
 }
 
+export function parseTelegramVerificationCommand(value) {
+  return /^(?:\/verify|\/verificar)(?:@[A-Za-z0-9_]+)?$/i.test(String(value || '').trim()) ? 'verify' : null;
+}
+
+function normalizeVerificationName(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function normalizeVerificationPhone(value) {
+  return String(value || '').replace(/[^\d]/g, '');
+}
+
+function verificationHash(value) {
+  return createHash('sha256').update(String(value || '')).digest('hex');
+}
+
+export function parseTelegramVerificationAnswer(step, value) {
+  const text = String(value || '').trim();
+  if (!text || text.length > 240) return { ok: false, error: 'Please enter a non-empty answer of 240 characters or fewer.' };
+  if (step === 'email') return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)
+    ? { ok: true, value: verificationHash(text.toLowerCase()) }
+    : { ok: false, error: 'Please enter the exact email address saved in your Automa CRM profile.' };
+  if (step === 'phone') {
+    if (!/^[+()\d\s.-]{7,40}$/.test(text)) return { ok: false, error: 'Please enter the phone number saved in your Automa CRM profile, including its country code.' };
+    const phone = normalizeVerificationPhone(text);
+    return phone.length >= 7 && phone.length <= 20
+      ? { ok: true, value: verificationHash(phone) }
+      : { ok: false, error: 'Please enter the phone number saved in your Automa CRM profile, including its country code.' };
+  }
+  if (step === 'fullName') {
+    const name = normalizeVerificationName(text);
+    return name.split(' ').filter(Boolean).length >= 2
+      ? { ok: true, value: verificationHash(name) }
+      : { ok: false, error: 'Please enter the full name saved in your Automa CRM profile.' };
+  }
+  return { ok: false, error: 'That verification step is not supported.' };
+}
+
+const VERIFICATION_STEPS = Object.freeze(['email', 'phone', 'fullName']);
+const VERIFICATION_QUESTIONS = Object.freeze({
+  email: 'Enter the exact email address saved in your Automa CRM profile.',
+  phone: 'Enter the phone number saved in your Automa CRM profile, including its country code.',
+  fullName: 'Enter your full name exactly as it appears in the CRM.'
+});
+
 const INTAKE_STEPS = Object.freeze(['companyName', 'contactName', 'email', 'phone', 'services', 'opportunityName', 'amount', 'probability', 'summary', 'customerVisible', 'confirm']);
 const INTAKE_QUESTIONS = Object.freeze({
   companyName: 'Let’s get started. What is the company or business name?',
@@ -170,6 +215,7 @@ export function buildTelegramCrmContext(records = {}, binding = {}) {
   }
   const contact = contacts.find(row => String(row.id) === String(binding.contactId)) || null;
   const companyId = contact?.companyId || binding.companyId || null;
+  const verified = binding.verificationLevel === 'crm';
   const related = row => (String(row?.contactId || '') === String(binding.contactId) || (companyId && String(row?.companyId || '') === String(companyId)));
   const customerVisible = value => value === true || String(value || '').toLowerCase() === 'true';
   const scoped = {
@@ -177,8 +223,8 @@ export function buildTelegramCrmContext(records = {}, binding = {}) {
     company: (records.companies || []).find(row => companyId && String(row.id) === String(companyId)) ? safeContextRow('companies', (records.companies || []).find(row => companyId && String(row.id) === String(companyId))) : null,
     opportunities: (records.opportunities || []).filter(related).slice(0, 25).map(row => safeContextRow('opportunities', row)),
     activities: (records.activities || []).filter(related).slice(0, 25).map(row => safeContextRow('activities', row)),
-    contracts: (records.contracts || []).filter(row => related(row) && customerVisible(row?.customerVisible)).slice(0, 25).map(row => safeContextRow('contracts', row)),
-    services: (records.services || []).filter(row => related(row) && customerVisible(row?.customerVisible)).slice(0, 25).map(row => safeContextRow('services', row))
+    contracts: (records.contracts || []).filter(row => related(row) && (verified || customerVisible(row?.customerVisible))).slice(0, 25).map(row => safeContextRow('contracts', row)),
+    services: (records.services || []).filter(row => related(row) && (verified || customerVisible(row?.customerVisible))).slice(0, 25).map(row => safeContextRow('services', row))
   };
   let serialized = JSON.stringify(scoped);
   const arrays = ['opportunities', 'activities', 'contracts', 'services'];
@@ -291,6 +337,8 @@ async function migrateBusinessBinding(db, incoming) {
       ownerUid: typeof data.ownerUid === 'string' ? data.ownerUid : null,
       contactId: typeof data.contactId === 'string' ? data.contactId : null,
       companyId: typeof data.companyId === 'string' ? data.companyId : null,
+      verificationLevel: data.verificationLevel === 'crm' ? 'crm' : null,
+      verifiedAt: data.verifiedAt || null,
       status: 'active',
       pairedAt: data.pairedAt || FieldValue.serverTimestamp(),
       migratedFrom: source.ref.id,
@@ -333,6 +381,150 @@ async function queryTelegramScopes(db, collection, field, value) {
     }));
     return snapshots.flatMap(snapshot => snapshot ? snapshot.docs : []);
   }
+}
+
+async function findVerificationSession(db, incoming) {
+  const key = telegramBindingKey(incoming.chatId, incoming.businessConnectionId);
+  const roots = await telegramWorkspaceRoots(db);
+  const snapshots = await Promise.all(roots.map(root => root.collection('telegramVerificationSessions').doc(key).get()));
+  const match = snapshots.findIndex(snapshot => {
+    const data = snapshot.data() || {};
+    return snapshot.exists
+      && data.status === 'collecting'
+      && String(data.chatId) === incoming.chatId
+      && String(data.businessConnectionId || '') === String(incoming.businessConnectionId || '')
+      && !isExpired(data.expiresAt);
+  });
+  if (match < 0) return null;
+  return { root: roots[match], ref: snapshots[match].ref, session: snapshots[match].data() || {}, bindingKey: key };
+}
+
+async function startVerification(db, incoming) {
+  const roots = await telegramWorkspaceRoots(db);
+  const root = roots[0];
+  if (!root) return null;
+  const bindingKey = telegramBindingKey(incoming.chatId, incoming.businessConnectionId);
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  const ref = root.collection('telegramVerificationSessions').doc(bindingKey);
+  await ref.set({
+    bindingKey,
+    chatId: incoming.chatId,
+    businessConnectionId: incoming.businessConnectionId || null,
+    status: 'collecting',
+    step: VERIFICATION_STEPS[0],
+    answers: {},
+    attempts: 0,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    expiresAt
+  }, { merge: true });
+  return { root, ref, session: { status: 'collecting', step: VERIFICATION_STEPS[0], answers: {}, attempts: 0, expiresAt }, bindingKey };
+}
+
+async function findVerifiedContact(db, answers) {
+  const roots = await telegramWorkspaceRoots(db);
+  const matches = [];
+  for (const root of roots) {
+    const snapshot = await root.collection('contacts').limit(1000).get();
+    for (const doc of snapshot.docs) {
+      const contact = doc.data() || {};
+      const name = normalizeVerificationName(contact.fullName || `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || contact.name);
+      const email = String(contact.email || '').trim().toLowerCase();
+      const phone = normalizeVerificationPhone(contact.phone || contact.phoneNumber);
+      if (verificationHash(email) !== answers.email || verificationHash(phone) !== answers.phone || verificationHash(name) !== answers.fullName) continue;
+      matches.push({ root, ref: doc.ref, id: doc.id, contact });
+    }
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
+async function completeVerification(db, sessionRoute, incoming) {
+  const answers = sessionRoute.session.answers || {};
+  const match = await findVerifiedContact(db, answers);
+  if (!match) {
+    const attempts = Number(sessionRoute.session.attempts || 0) + 1;
+    await sessionRoute.ref.set({
+      attempts,
+      step: VERIFICATION_STEPS[0],
+      answers: {},
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(attempts >= 5 ? { status: 'failed' } : {})
+    }, { merge: true });
+    return { ok: false, retry: attempts < 5, reply: attempts >= 5
+      ? 'The verification limit was reached. Start again with /verify when you are ready.'
+      : 'Those details do not match one unique CRM profile. Please check the exact email, phone number and full name, then reply /verify to try again.' };
+  }
+  const bindingKey = telegramBindingKey(incoming.chatId, incoming.businessConnectionId);
+  const bindingRef = match.root.collection('telegramBindings').doc(bindingKey);
+  await db.runTransaction(async transaction => {
+    const sessionSnapshot = await transaction.get(sessionRoute.ref);
+    const bindingSnapshot = await transaction.get(bindingRef);
+    const session = sessionSnapshot.data() || {};
+    if (!sessionSnapshot.exists || session.status !== 'collecting' || isExpired(session.expiresAt)) throw Object.assign(new Error('TELEGRAM_VERIFICATION_EXPIRED'), { code: 'telegram_verification_expired' });
+    const existing = bindingSnapshot.data() || {};
+    if (bindingSnapshot.exists && existing.status === 'active' && (existing.scope === 'owner' || String(existing.contactId || '') !== match.id)) {
+      throw Object.assign(new Error('TELEGRAM_BINDING_CONFLICT'), { code: 'telegram_binding_conflict' });
+    }
+    transaction.set(bindingRef, {
+      bindingKey,
+      chatId: incoming.chatId,
+      businessConnectionId: incoming.businessConnectionId || null,
+      scope: 'customer',
+      ownerUid: null,
+      contactId: match.id,
+      companyId: typeof match.contact.companyId === 'string' ? match.contact.companyId : null,
+      verificationLevel: 'crm',
+      verifiedAt: FieldValue.serverTimestamp(),
+      status: 'active',
+      pairedAt: existing.pairedAt || FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    transaction.update(sessionRoute.ref, { status: 'verified', verifiedAt: FieldValue.serverTimestamp(), answers: {}, updatedAt: FieldValue.serverTimestamp() });
+  });
+  return { ok: true, reply: 'Verification successful. Your Telegram chat is now linked to the matching Automa CRM profile. You can ask about the account, services and contract records.' };
+}
+
+async function processVerificationMessage(db, incoming) {
+  const command = parseTelegramVerificationCommand(incoming.text);
+  let route = await findVerificationSession(db, incoming);
+  if (command) {
+    route = await startVerification(db, incoming);
+    return { handled: true, reply: route ? `To protect CRM data, I need three matching details. ${VERIFICATION_QUESTIONS[VERIFICATION_STEPS[0]]}` : 'Verification is temporarily unavailable. Ask the account administrator to check the Automa server configuration.' };
+  }
+  if (!route) return { handled: false };
+  if (/^\/(?:cancel|stop)$/i.test(incoming.text)) {
+    await route.ref.set({ status: 'cancelled', answers: {}, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return { handled: true, reply: 'Verification cancelled. Reply /verify whenever you want to try again.' };
+  }
+  const step = VERIFICATION_STEPS.includes(route.session.step) ? route.session.step : VERIFICATION_STEPS[0];
+  const parsed = parseTelegramVerificationAnswer(step, incoming.text);
+  if (!parsed.ok) return { handled: true, reply: `${parsed.error}\n\n${VERIFICATION_QUESTIONS[step]}` };
+  const answers = { ...(route.session.answers || {}), [step]: parsed.value };
+  const nextIndex = VERIFICATION_STEPS.indexOf(step) + 1;
+  if (nextIndex < VERIFICATION_STEPS.length) {
+    const nextStep = VERIFICATION_STEPS[nextIndex];
+    await route.ref.set({ answers, step: nextStep, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return { handled: true, reply: VERIFICATION_QUESTIONS[nextStep] };
+  }
+  await route.ref.set({ answers, step: 'complete', updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  const result = await completeVerification(db, { ...route, session: { ...route.session, answers } }, incoming);
+  return { handled: true, reply: result.reply, verified: result.ok };
+}
+
+async function genericTelegramReply(incoming, agentId) {
+  const agent = { ...(getDefaultAgent(agentId) || getDefaultAgent('support-bot-v2-1')) };
+  const model = agent.model || DEFAULT_OPENAI_MODEL;
+  const instructions = [
+    `You are the ${agent.name || 'Automa assistant'} replying through Telegram.`,
+    agent.description ? `Business area: ${agent.description}.` : '',
+    agent.instructions || '',
+    'This chat has not completed CRM verification. Answer general questions about Automa, pricing, integrations and workflows without using or inventing customer records.',
+    'If the user asks about a customer account, contracts, services, opportunities or internal CRM records, explain that they must reply /verify and provide the exact CRM email, phone number and full name. Never claim to have accessed private data or completed an action.'
+  ].filter(Boolean).join('\n');
+  const result = await requestOpenAI({ message: incoming.text, history: [] }, { model, instructions, maxOutputTokens: 600 });
+  return result.status === 200 && result.body?.reply
+    ? result.body.reply
+    : 'I can help with general questions about Automa. To access a customer account, reply /verify and provide the exact CRM email, phone number and full name.';
 }
 
 async function consumePairing(db, incoming, rawCode) {
@@ -575,8 +767,22 @@ export default async function handler(req, res) {
         if (updateRef) await updateRef.set({ chatId: incoming.chatId, messageId: incoming.messageId, type: 'telegram_intake', createdAt: FieldValue.serverTimestamp() });
         return res.status(200).json({ ok: true, intake: true, done: result.done, ...(result.result ? { records: result.result } : {}) });
       }
-      await sendTelegramMessage(token, incoming.chatId, 'This Telegram chat is not linked to an Automa client profile. Ask your account administrator for a secure linking link.', incoming.businessConnectionId);
-      return res.status(200).json({ ok: true, ignored: true, reason: 'telegram_chat_unlinked' });
+      try {
+        const verification = await processVerificationMessage(db, incoming);
+        if (verification.handled) {
+          await sendTelegramMessage(token, incoming.chatId, verification.reply, incoming.businessConnectionId);
+          return res.status(200).json({ ok: true, verification: true, verified: Boolean(verification.verified) });
+        }
+      } catch (error) {
+        if (error?.code === 'telegram_binding_conflict') {
+          await sendTelegramMessage(token, incoming.chatId, 'This chat is already linked to a different CRM profile. Ask an administrator to review the connection.', incoming.businessConnectionId);
+          return res.status(200).json({ ok: true, verification: false, reason: error.code });
+        }
+        throw error;
+      }
+      const reply = await genericTelegramReply(incoming, defaultAgentId);
+      await sendTelegramMessage(token, incoming.chatId, reply, incoming.businessConnectionId);
+      return res.status(200).json({ ok: true, generic: true, reason: 'telegram_chat_unverified' });
     }
     const { root, binding } = route;
     const integrationSnapshot = await root.collection('integrations').doc('telegram').get();
