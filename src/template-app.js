@@ -14,7 +14,7 @@ const config = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
-let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {}, gmailIntegration = {}, googleWorkspaceStatus = {};
+let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {}, gmailIntegration = {}, googleWorkspaceStatus = {}, agentMetrics = null, agentMetricsTimer = null;
 const crmState = { companies: [], contacts: [], opportunities: [], activities: [], contracts: [], services: [] };
 const DEFAULT_WORKSPACE_COLOR = '#0b2a4a';
 const INTEGRATION_CATALOG = Object.freeze({
@@ -91,9 +91,9 @@ window.sendChat = async function sendChat() {
   try {
     const token = await auth.currentUser?.getIdToken();
     if (!token) throw new Error('AUTH');
-    const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: 'chat', message, history: chat.slice(0, -1).slice(-19) }), signal: AbortSignal.timeout(35000) });
+    const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: 'chat', ...workspacePayload(), message, history: chat.slice(0, -1).slice(-19) }), signal: AbortSignal.timeout(35000) });
     const data = await response.json().catch(() => ({})); if (!response.ok) { const failure = new Error(data.error || `Chat service returned HTTP ${response.status}.`); failure.code = data.code; throw failure; }
-    const reply = data.reply || 'I could not generate a response.'; chat.push({ role: 'assistant', content: reply }); window.appendMsg?.(reply, 'ai');
+    const reply = data.reply || 'I could not generate a response.'; chat.push({ role: 'assistant', content: reply }); window.appendMsg?.(reply, 'ai'); scheduleAgentMetricsRefresh();
   } catch (error) { const message = error.message === 'AUTH' ? 'Your session expired. Please sign in again.' : error.name === 'TimeoutError' ? 'The AI service took too long to respond. Please try again.' : error.message || 'I could not connect to the AI service. Check your Vercel environment variables.'; window.appendMsg?.(message, 'ai'); }
   finally { chatPending = false; if (sendButton) sendButton.disabled = false; if (typing) window.removeTyping?.(typing); input?.focus(); }
 };
@@ -246,6 +246,48 @@ async function callBusiness(body) {
   const response = await fetch('/api/business', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
   const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Request failed.'); return data;
 }
+function metricDisplay(value, suffix = '') { return Number.isFinite(Number(value)) ? `${Number(value).toLocaleString()}${suffix}` : '—'; }
+function renderAgentMetrics(metrics) {
+  if (!metrics) return;
+  const byId = new Map((metrics.agents || []).map(agent => [agent.id, agent]));
+  document.querySelectorAll('#sec-agents .agent-card[data-agent-id]').forEach(card => {
+    const metric = byId.get(card.dataset.agentId);
+    if (!metric) return;
+    const values = card.querySelectorAll('[data-agent-metric-value]');
+    const labels = card.querySelectorAll('[data-agent-metric-label]');
+    if (values[0]) values[0].textContent = metricDisplay(metric.requestCount);
+    if (values[1]) values[1].textContent = `${metric.successRate.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+    if (labels[0]) labels[0].textContent = metric.id === 'support-bot-v2-1' ? 'Conversations' : metric.id === 'sales-qualifier' ? 'Requests reviewed' : metric.id === 'data-analyzer' ? 'Analyses' : 'Follow-ups';
+    if (labels[1]) labels[1].textContent = 'Success rate';
+    const badge = card.querySelector('[data-agent-status]');
+    if (badge) { badge.textContent = metric.status === 'paused' ? 'Paused' : (metric.requestCount ? 'Active' : 'Ready'); badge.className = `bst ${metric.status === 'paused' ? 'sid' : 'son'}`; }
+  });
+  const summary = metrics.summary || {};
+  document.querySelector('[data-agent-summary]')?.replaceChildren(document.createTextNode(`${metricDisplay(summary.activeUsers)} active chat users · ${metricDisplay(summary.totalRequests)} agent runs in the last ${metrics.periodDays || 30} days.`));
+  const analytics = document.querySelector('#sec-analytics');
+  if (analytics) {
+    const statValues = analytics.querySelectorAll('[data-analytics-value]');
+    if (statValues[0]) statValues[0].textContent = Number(summary.pipelineValue) ? `$${Number(summary.pipelineValue).toLocaleString()}` : '—';
+    if (statValues[1]) statValues[1].textContent = '—';
+    if (statValues[2]) statValues[2].textContent = metricDisplay(summary.customersSupported);
+    if (statValues[3]) statValues[3].textContent = `${Number(summary.successRate || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+    analytics.querySelectorAll('[data-analytics-agent-id]').forEach(row => {
+      const metric = byId.get(row.dataset.analyticsAgentId); if (!metric) return;
+      const rate = row.querySelector('[data-analytics-agent-rate]'); const fill = row.querySelector('.rtfill');
+      if (rate) rate.textContent = `${metric.successRate.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+      if (fill) fill.style.width = `${Math.min(100, Math.max(0, metric.successRate))}%`;
+    });
+  }
+}
+async function loadAgentMetrics() {
+  if (!currentUser) return;
+  try { agentMetrics = await callBusiness({ action: 'agentMetrics', ...workspacePayload(), days: 30 }); renderAgentMetrics(agentMetrics); }
+  catch (error) { console.warn('Agent metrics unavailable', error.message); }
+}
+function scheduleAgentMetricsRefresh() {
+  clearTimeout(agentMetricsTimer);
+  agentMetricsTimer = setTimeout(() => { loadAgentMetrics(); }, 700);
+}
 async function callGmail(body) {
   const token = await auth.currentUser?.getIdToken(); if (!token) throw new Error('AUTH');
   const response = await fetch('/api/gmail', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
@@ -358,6 +400,7 @@ function openAgentTest(agent = {}, id) {
     if (!auth.currentUser) throw new Error('Your session expired. Please sign in again.');
     const result = await callBusiness({ action: 'runAgent', ...workspacePayload(), agentId: id, message: data.message, history: [] });
     showCrmNotice(`${result.agent || seed.name} · ${modelLabel(result.model || seed.model)}`, result.reply || 'No response.');
+    await loadAgentMetrics();
   });
 }
 const AUTOMATION_BLUEPRINTS = Object.freeze({
@@ -827,7 +870,7 @@ async function loadWorkspaces(user, requestedId = null) {
   try { const result = await callBusiness({ action: 'organizationList' }); organizations = result.organizations || []; } catch (error) { console.warn('Organizations unavailable', error.message); }
   workspaceOptions = [{ id: null, name: 'Personal workspace', color: DEFAULT_WORKSPACE_COLOR, role: 'owner', members: [], pendingInvites: [] }, ...organizations.map(option => ({ ...option, color: normalizedWorkspaceColor(option.color) }))];
   workspace = workspaceOptions.find(option => option.id === requestedId) || workspaceOptions.find(option => option.id === workspace.id) || workspaceOptions[0];
-  updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(user); await Promise.all([loadGmailStatus(), loadGoogleStatus()]);
+  updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(user); await Promise.all([loadGmailStatus(), loadGoogleStatus(), loadAgentMetrics()]);
   const gmailResult = new URLSearchParams(window.location.search).get('gmail');
   if (gmailResult) {
     window.history.replaceState({}, '', window.location.pathname + window.location.hash);
@@ -950,7 +993,7 @@ function subscribe(user) {
     const stop = onSnapshot(sourceQuery, snap => { if (generation !== run) return; const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); updateStats(name, rows); callback(rows); }, error => { if (generation === run) console.warn(`${name} unavailable`, error.code); });
     stops.push(stop);
   };
-  watch('leads', rows => renderActivity(rows)); watch('tasks', rows => renderActivity(rows)); watch('runs', rows => renderActivity(rows));
+  watch('leads', rows => renderActivity(rows)); watch('tasks', rows => renderActivity(rows)); watch('runs', rows => { renderActivity(rows); scheduleAgentMetricsRefresh(); });
   watch('agents', rows => renderEntities('agents', rows)); watch('automations', rows => renderEntities('automations', rows)); watch('integrations', rows => renderEntities('integrations', rows));
   watch('companies', rows => { crmState.companies = rows; renderCrm(); }); watch('contacts', rows => { crmState.contacts = rows; renderCrm(); }); watch('opportunities', rows => { crmState.opportunities = rows; renderCrm(); }); watch('activities', rows => { crmState.activities = rows; renderCrm(); }); watch('contracts', rows => { crmState.contracts = rows; renderCrm(); }); watch('services', rows => { crmState.services = rows; renderCrm(); });
   wireWorkspace();

@@ -1,5 +1,8 @@
 import { InputError, parseCommand } from '../server/domain.js';
 import { DEFAULT_OPENAI_MODEL, isAllowedOpenAIModel } from '../shared/models.js';
+import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { recordAgentRun } from '../server/agent-metrics.js';
 
 const systemInstructions = [
   'You are Automa, a concise business automation assistant from W Studio 3D.',
@@ -12,6 +15,31 @@ const systemInstructions = [
 const cleanEnv = value => typeof value === 'string'
   ? value.trim().replace(/^(["'])(.*)\1$/s, '$2').trim()
   : '';
+
+async function metricsRoot(command, uid) {
+  let { FIREBASE_PROJECT_ID: projectId, FIREBASE_CLIENT_EMAIL: clientEmail, FIREBASE_PRIVATE_KEY: privateKey } = process.env;
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (serviceAccountJson) {
+    try {
+      const account = JSON.parse(serviceAccountJson);
+      projectId = account.project_id || projectId; clientEmail = account.client_email || clientEmail; privateKey = account.private_key || privateKey;
+    } catch { return null; }
+  }
+  if (!projectId || !clientEmail || !privateKey) return null;
+  const clean = value => value.trim().replace(/^['"]|['"]$/g, '').replace(/\\+r?\\+n/g, '\n').replace(/\\+n/g, '\n').replace(/\\"/g, '"');
+  try {
+    const app = getApps()[0] || initializeApp({ credential: cert({ projectId: clean(projectId), clientEmail: clean(clientEmail), privateKey: clean(privateKey).replace(/\r/g, '') }) });
+    const db = getFirestore(app);
+    if (command.orgId) {
+      const member = await db.collection('organizations').doc(command.orgId).collection('members').doc(uid).get();
+      if (member.exists) return db.collection('organizations').doc(command.orgId);
+    }
+    return db.collection('users').doc(uid);
+  } catch (error) {
+    console.warn('Chat metrics unavailable', { code: error?.code || 'firebase_metrics_unavailable' });
+    return null;
+  }
+}
 
 async function responseJson(response) {
   try { return await response.json(); }
@@ -117,7 +145,22 @@ export async function requestOpenAI(command, options = {}) {
 export async function handleChatCommand(token, command) {
   const session = await verifyFirebaseSession(token);
   if (!session.user) return session;
-  return requestOpenAI(command);
+  const startedAt = Date.now();
+  const result = await requestOpenAI(command);
+  const root = await metricsRoot(command, session.user.localId);
+  if (root) await recordAgentRun(root, FieldValue, {
+    agentId: 'automa-assistant',
+    channel: 'chat',
+    actorKey: `user:${session.user.localId}`,
+    model: result.body?.model,
+    status: result.status === 200 ? 'completed' : 'failed',
+    success: result.status === 200,
+    latencyMs: Date.now() - startedAt,
+    inputChars: typeof command.message === 'string' ? command.message.length : 0,
+    outputChars: typeof result.body?.reply === 'string' ? result.body.reply.length : 0,
+    errorCode: result.body?.code
+  }).catch(error => console.warn('Chat run metric could not be recorded', { code: error?.code || 'metrics_write_failed' }));
+  return result;
 }
 
 export default async function handler(req, res) {

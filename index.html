@@ -955,7 +955,7 @@
                   <div class="d-flex align-items-center justify-content-between mb-4">
                      <div>
                         <h4 style="font-size:1.4rem;font-weight:700;margin-bottom:4px">AI Agents</h4>
-                        <p style="font-size:.875rem;color:var(--tx3);margin:0">Manage and monitor your OpenAI-powered agents.</p>
+                        <p style="font-size:.875rem;color:var(--tx3);margin:0">Manage and monitor your OpenAI-powered agents. <span data-agent-summary>Live metrics load for this workspace.</span></p>
                      </div>
                      <button class="bgrd btn px-3 py-2" style="font-size:.85rem"><i class="fa-solid fa-plus me-2"></i>Deploy New Agent</button>
                   </div>
@@ -968,19 +968,19 @@
                                  <div class="d-flex align-items-center gap-2 mb-1"><strong>Customer Support Agent</strong><span style="width:9px;height:9px;border-radius:50%;background:#34d399;box-shadow:0 0 8px #34d399"></span></div>
                                  <div style="font-size:.78rem;color:var(--tx3)">Customer Support • GPT-5.6 Terra</div>
                               </div>
-                              <span class="bst son">Online</span>
+                              <span data-agent-status class="bst son">Online</span>
                            </div>
                            <div class="row g-2 mb-3">
                               <div class="col-6">
                                  <div style="background:var(--bg3);border-radius:10px;padding:10px">
-                                    <div style="font-size:1.1rem;font-weight:700">1,248</div>
-                                    <div style="font-size:.7rem;color:var(--tx3)">Chats today</div>
+                                    <div data-agent-metric-value style="font-size:1.1rem;font-weight:700">—</div>
+                                    <div data-agent-metric-label style="font-size:.7rem;color:var(--tx3)">Conversations</div>
                                  </div>
                               </div>
                               <div class="col-6">
                                  <div style="background:var(--bg3);border-radius:10px;padding:10px">
-                                    <div style="font-size:1.1rem;font-weight:700;color:#34d399">96.4%</div>
-                                    <div style="font-size:.7rem;color:var(--tx3)">Success rate</div>
+                                    <div data-agent-metric-value style="font-size:1.1rem;font-weight:700;color:#34d399">—</div>
+                                    <div data-agent-metric-label style="font-size:.7rem;color:var(--tx3)">Success rate</div>
                                  </div>
                               </div>
                            </div>
@@ -995,19 +995,19 @@
                                  <div class="d-flex align-items-center gap-2 mb-1"><strong>Contract Coordinator</strong><span style="width:9px;height:9px;border-radius:50%;background:#8b5cf6;box-shadow:0 0 8px #8b5cf6"></span></div>
                                  <div style="font-size:.78rem;color:var(--tx3)">Client &amp; Contract Flow • GPT-5.6 Sol</div>
                               </div>
-                              <span class="bst sbz">Busy</span>
+                              <span data-agent-status class="bst sbz">Busy</span>
                            </div>
                            <div class="row g-2 mb-3">
                               <div class="col-6">
                                  <div style="background:var(--bg3);border-radius:10px;padding:10px">
-                                    <div style="font-size:1.1rem;font-weight:700">347</div>
-                                    <div style="font-size:.7rem;color:var(--tx3)">Intakes reviewed</div>
+                                    <div data-agent-metric-value style="font-size:1.1rem;font-weight:700">—</div>
+                                    <div data-agent-metric-label style="font-size:.7rem;color:var(--tx3)">Requests reviewed</div>
                                  </div>
                               </div>
                               <div class="col-6">
                                  <div style="background:var(--bg3);border-radius:10px;padding:10px">
-                                    <div style="font-size:1.1rem;font-weight:700;color:#a78bfa">78.2%</div>
-                                    <div style="font-size:.7rem;color:var(--tx3)">Completion rate</div>
+                                    <div data-agent-metric-value style="font-size:1.1rem;font-weight:700;color:#a78bfa">—</div>
+                                    <div data-agent-metric-label style="font-size:.7rem;color:var(--tx3)">Success rate</div>
                                  </div>
                               </div>
                            </div>
@@ -1027,14 +1027,14 @@
                            <div class="row g-2 mb-3">
                               <div class="col-6">
                                  <div style="background:var(--bg3);border-radius:10px;padding:10px">
-                                    <div style="font-size:1.1rem;font-weight:700">92</div>
-                                    <div style="font-size:.7rem;color:var(--tx3)">Reports generated</div>
+                                    <div data-agent-metric-value style="font-size:1.1rem;font-weight:700">—</div>
+                                    <div data-agent-metric-label style="font-size:.7rem;color:var(--tx3)">Analyses</div>
                                  </div>
                               </div>
                               <div class="col-6">
                                  <div style="background:var(--bg3);border-radius:10px;padding:10px">
-                                    <div style="font-size:1.1rem;font-weight:700;color:#60a5fa">100%</div>
-                                    <div style="font-size:.7rem;color:var(--tx3)">Accuracy</div>
+                                    <div data-agent-metric-value style="font-size:1.1rem;font-weight:700;color:#60a5fa">—</div>
+                                    <div data-agent-metric-label style="font-size:.7rem;color:var(--tx3)">Success rate</div>
                                  </div>
                               </div>
                            </div>
@@ -1049,19 +1049,19 @@
                                  <div class="d-flex align-items-center gap-2 mb-1"><strong>Follow-up Agent</strong><span style="width:9px;height:9px;border-radius:50%;background:#f59e0b"></span></div>
                                  <div style="font-size:.78rem;color:var(--tx3)">Customer Follow-up • GPT-5.6 Terra</div>
                               </div>
-                              <span class="bst sid">Idle</span>
+                              <span data-agent-status class="bst sid">Idle</span>
                            </div>
                            <div class="row g-2 mb-3">
                               <div class="col-6">
                                  <div style="background:var(--bg3);border-radius:10px;padding:10px">
-                                    <div style="font-size:1.1rem;font-weight:700">538</div>
-                                    <div style="font-size:.7rem;color:var(--tx3)">Follow-ups prepared</div>
+                                    <div data-agent-metric-value style="font-size:1.1rem;font-weight:700">—</div>
+                                    <div data-agent-metric-label style="font-size:.7rem;color:var(--tx3)">Follow-ups</div>
                                  </div>
                               </div>
                               <div class="col-6">
                                  <div style="background:var(--bg3);border-radius:10px;padding:10px">
-                                    <div style="font-size:1.1rem;font-weight:700;color:#fbbf24">41.3%</div>
-                                    <div style="font-size:.7rem;color:var(--tx3)">Completion rate</div>
+                                    <div data-agent-metric-value style="font-size:1.1rem;font-weight:700;color:#fbbf24">—</div>
+                                    <div data-agent-metric-label style="font-size:.7rem;color:var(--tx3)">Success rate</div>
                                  </div>
                               </div>
                            </div>
@@ -1128,7 +1128,7 @@
                               <div style="width:36px;height:36px;border-radius:10px;background:rgba(139,92,246,.12);display:flex;align-items:center;justify-content:center"><i class="fa-solid fa-chart-line" style="color:#a78bfa;font-size:.85rem"></i></div>
                               <span style="font-size:.7rem;font-weight:600;padding:3px 8px;border-radius:100px;background:rgba(52,211,153,.1);color:#34d399">Tracked</span>
                            </div>
-                           <div class="db-stat-val gt">$128K</div>
+                           <div data-analytics-value class="db-stat-val gt">—</div>
                            <div class="db-stat-lbl">Workflow Value</div>
                         </div>
                      </div>
@@ -1138,7 +1138,7 @@
                               <div style="width:36px;height:36px;border-radius:10px;background:rgba(52,211,153,.1);display:flex;align-items:center;justify-content:center"><i class="fa-solid fa-star" style="color:#34d399;font-size:.85rem"></i></div>
                               <span style="font-size:.7rem;font-weight:600;padding:3px 8px;border-radius:100px;background:rgba(52,211,153,.1);color:#34d399">Live</span>
                            </div>
-                           <div class="db-stat-val" style="color:#34d399">4.9/5</div>
+                           <div data-analytics-value class="db-stat-val" style="color:#34d399">—</div>
                            <div class="db-stat-lbl">Customer Satisfaction</div>
                         </div>
                      </div>
@@ -1148,7 +1148,7 @@
                               <div style="width:36px;height:36px;border-radius:10px;background:rgba(59,130,246,.1);display:flex;align-items:center;justify-content:center"><i class="fa-solid fa-users" style="color:#60a5fa;font-size:.85rem"></i></div>
                               <span style="font-size:.7rem;font-weight:600;padding:3px 8px;border-radius:100px;background:rgba(52,211,153,.1);color:#34d399">Tracked</span>
                            </div>
-                           <div class="db-stat-val" style="color:#60a5fa">8,420</div>
+                           <div data-analytics-value class="db-stat-val" style="color:#60a5fa">—</div>
                            <div class="db-stat-lbl">Customers Supported</div>
                         </div>
                      </div>
@@ -1158,7 +1158,7 @@
                               <div style="width:36px;height:36px;border-radius:10px;background:rgba(245,158,11,.1);display:flex;align-items:center;justify-content:center"><i class="fa-solid fa-percent" style="color:#fbbf24;font-size:.85rem"></i></div>
                               <span style="font-size:.7rem;font-weight:600;padding:3px 8px;border-radius:100px;background:rgba(52,211,153,.1);color:#34d399">Tracked</span>
                            </div>
-                           <div class="db-stat-val" style="color:#fbbf24">81%</div>
+                           <div data-analytics-value class="db-stat-val" style="color:#fbbf24">—</div>
                            <div class="db-stat-lbl">Automated Completion</div>
                         </div>
                      </div>
@@ -1177,26 +1177,26 @@
                         <div style="background:var(--sf);border:1px solid var(--bd);border-radius:18px;padding:20px">
                            <div style="font-weight:600;font-size:.9rem;margin-bottom:16px">Agent Performance</div>
                            <div class="d-flex flex-column gap-3">
-                              <div>
-                                 <div class="d-flex justify-content-between mb-1" style="font-size:.82rem"><span>Customer Support Agent</span><span style="color:#34d399;font-weight:600">96.4%</span></div>
+                              <div data-analytics-agent-id="support-bot-v2-1">
+                                 <div class="d-flex justify-content-between mb-1" style="font-size:.82rem"><span>Customer Support Agent</span><span data-analytics-agent-rate style="color:#34d399;font-weight:600">—</span></div>
                                  <div class="rtbar">
                                     <div class="rtfill" style="width:96%"></div>
                                  </div>
                               </div>
-                              <div>
-                                 <div class="d-flex justify-content-between mb-1" style="font-size:.82rem"><span>Contract Coordinator</span><span style="color:#a78bfa;font-weight:600">78.2%</span></div>
+                              <div data-analytics-agent-id="sales-qualifier">
+                                 <div class="d-flex justify-content-between mb-1" style="font-size:.82rem"><span>Contract Coordinator</span><span data-analytics-agent-rate style="color:#a78bfa;font-weight:600">—</span></div>
                                  <div class="rtbar">
                                     <div class="rtfill" style="width:78%"></div>
                                  </div>
                               </div>
-                              <div>
-                                 <div class="d-flex justify-content-between mb-1" style="font-size:.82rem"><span>Business Flow Analyst</span><span style="color:#60a5fa;font-weight:600">100%</span></div>
+                              <div data-analytics-agent-id="data-analyzer">
+                                 <div class="d-flex justify-content-between mb-1" style="font-size:.82rem"><span>Business Flow Analyst</span><span data-analytics-agent-rate style="color:#60a5fa;font-weight:600">—</span></div>
                                  <div class="rtbar">
                                     <div class="rtfill" style="width:100%"></div>
                                  </div>
                               </div>
-                              <div>
-                                 <div class="d-flex justify-content-between mb-1" style="font-size:.82rem"><span>Follow-up Agent</span><span style="color:#fbbf24;font-weight:600">41.3%</span></div>
+                              <div data-analytics-agent-id="email-automator">
+                                 <div class="d-flex justify-content-between mb-1" style="font-size:.82rem"><span>Follow-up Agent</span><span data-analytics-agent-rate style="color:#fbbf24;font-weight:600">—</span></div>
                                  <div class="rtbar">
                                     <div class="rtfill" style="width:41%"></div>
                                  </div>

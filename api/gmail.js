@@ -6,6 +6,7 @@ import { InputError, parseCommand } from '../server/domain.js';
 import { requestOpenAI } from './chat.js';
 import { DEFAULT_OPENAI_MODEL, isAllowedOpenAIModel } from '../shared/models.js';
 import { getDefaultAgent } from '../shared/agents.js';
+import { recordAgentRun } from '../server/agent-metrics.js';
 
 const GMAIL_SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/gmail.modify'];
 const GMAIL_API_ROOT = 'https://gmail.googleapis.com/gmail/v1/users/me';
@@ -394,6 +395,7 @@ function parseReview(value) {
 }
 
 async function reviewInbox(root, FieldValue, requestedModel = null) {
+  const startedAt = Date.now();
   const { accessToken } = await accessFor(root, FieldValue);
   const [messages, templateSnapshot, agentSnapshot] = await Promise.all([
     listInbox(accessToken),
@@ -420,6 +422,7 @@ async function reviewInbox(root, FieldValue, requestedModel = null) {
   const itemsById = new Map(messages.map(message => [message.id, message]));
   const items = Array.isArray(parsed.items) ? parsed.items.filter(item => itemsById.has(item?.messageId)).slice(0, 20).map(item => ({ ...item, templateId: item.templateId && validIds.has(item.templateId) ? item.templateId : '', canReply: Boolean(item.canReply && item.templateId && validIds.has(item.templateId) && item.threatLevel === 'clear') })) : [];
   const summary = typeof parsed.summary === 'string' ? parsed.summary.slice(0, 4000) : 'No summary was returned.';
+  await recordAgentRun(root, FieldValue, { agentId: 'email-automator', channel: 'gmail', actorKey: 'gmail:workspace', model, status: 'completed', success: true, latencyMs: Date.now() - startedAt, inputChars: context.length, outputChars: summary.length }).catch(error => console.warn('Gmail review metric could not be recorded', { code: error?.code || 'metrics_write_failed' }));
   await root.collection('runs').add({ type: 'gmail_inbox_review', provider: 'gmail', status: 'completed', messageCount: messages.length, message: `Gmail inbox review completed for ${messages.length} message${messages.length === 1 ? '' : 's'}. Open AI inbox review for summaries and threat findings.`, model, createdAt: FieldValue.serverTimestamp() });
   return { ok: true, model, summary, messages, items, templates: templates.map(({ id, name, subject }) => ({ id, name, subject })) };
 }
@@ -516,9 +519,12 @@ export default async function handler(req, res) {
         'html must be a complete, compact email-safe HTML document using inline CSS only. Keep HTML below 25000 characters. Never use meta or link tags, scripts, forms, iframes, style tags, external assets, tracking pixels, CSS url() values, javascript URLs, data URLs, or unprovided links.',
         'text must be a concise plain-text equivalent. Do not claim that the email was sent. Use the requested language and only facts given by the user.'
       ].join(' ');
+      const startedAt = Date.now();
       const result = await requestOpenAI({ message: command.prompt, history: [] }, { model: command.model || DEFAULT_OPENAI_MODEL, instructions, textFormat: EMAIL_DRAFT_FORMAT, maxOutputTokens: 4000 });
+      const draft = result.status === 200 ? safeGeneratedEmail(result.body.reply) : null;
+      await recordAgentRun(root, FieldValue, { agentId: 'email-automator', channel: 'gmail', actorKey: `user:${user.uid}`, model: result.body?.model || command.model || DEFAULT_OPENAI_MODEL, status: result.status === 200 ? 'completed' : 'failed', success: result.status === 200, latencyMs: Date.now() - startedAt, inputChars: command.prompt.length, outputChars: draft ? draft.html.length + draft.plainText.length : 0, errorCode: result.body?.code }).catch(error => console.warn('Gmail generation metric could not be recorded', { code: error?.code || 'metrics_write_failed' }));
       if (result.status !== 200) return res.status(result.status).json(result.body);
-      return res.status(200).json({ ok: true, ...safeGeneratedEmail(result.body.reply), model: result.body.model });
+      return res.status(200).json({ ok: true, ...draft, model: result.body.model });
     }
     if (command.action === 'gmailSend') {
       const config = oauthConfig();

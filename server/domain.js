@@ -82,7 +82,8 @@ export function parseCommand(body) {
       if (!item || !['user', 'assistant'].includes(item.role)) throw new InputError('Historial inválido.');
       return { role: item.role, content: text(item.content, 'Mensaje', 4000) };
     });
-    return { action: body.action, message, history };
+    const orgId = body.orgId == null ? null : organizationId(body.orgId);
+    return { action: body.action, message, history, orgId };
   }
   if (body.action === 'crmAssist') {
     const task = text(body.task, 'Tarea CRM', 40);
@@ -186,6 +187,14 @@ export function parseCommand(body) {
     });
     const orgId = body.orgId == null ? null : organizationId(body.orgId);
     return { action: body.action, agentId, message, history, orgId };
+  }
+  if (body.action === 'agentMetrics') {
+    const days = body.days == null ? 30 : Number(body.days);
+    if (!Number.isInteger(days) || days < 1 || days > 90) throw new InputError('Periodo de métricas inválido.');
+    const agentId = body.agentId == null ? null : text(body.agentId, 'Agente', 80);
+    if (agentId && !/^[a-zA-Z0-9_-]{1,80}$/.test(agentId)) throw new InputError('Agente inválido.');
+    const orgId = body.orgId == null ? null : organizationId(body.orgId);
+    return { action: body.action, days, agentId, orgId };
   }
   if (body.action === 'saveEntity') {
     const collection = text(body.collection, 'Colección', 40);

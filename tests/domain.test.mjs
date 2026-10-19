@@ -42,6 +42,12 @@ test('validates agent runs and OpenAI-only agent configuration', () => {
  assert.throws(() => parseCommand({action:'saveEntity',collection:'agents',data:{name:'Other',model:'claude-3.5'}}));
  assert.throws(() => parseCommand({action:'saveEntity',collection:'agents',data:{name:'Paused',model:'gpt-5.6-sol',status:'Active'}}));
 });
+test('validates bounded agent metrics requests', () => {
+ const parsed = parseCommand({ action: 'agentMetrics', days: 14, agentId: 'sales-qualifier' });
+ assert.deepEqual(parsed, { action: 'agentMetrics', days: 14, agentId: 'sales-qualifier', orgId: null });
+ assert.throws(() => parseCommand({ action: 'agentMetrics', days: 0 }));
+ assert.throws(() => parseCommand({ action: 'agentMetrics', days: 91 }));
+});
 test('validates CRM records and bounded CRM copilot requests', () => {
  const company = parseCommand({ action:'saveEntity', collection:'companies', data:{ name:'Acme', industry:'Services', website:'https://acme.example', size:'small', status:'active' } });
  assert.equal(company.collection, 'companies'); assert.equal(company.data.name, 'Acme');
