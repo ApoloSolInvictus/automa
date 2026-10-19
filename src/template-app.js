@@ -14,7 +14,7 @@ const config = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
-let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {}, gmailIntegration = {};
+let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {}, gmailIntegration = {}, googleWorkspaceStatus = {};
 const crmState = { companies: [], contacts: [], opportunities: [], activities: [], contracts: [], services: [] };
 const DEFAULT_WORKSPACE_COLOR = '#0b2a4a';
 const INTEGRATION_CATALOG = Object.freeze({
@@ -250,6 +250,11 @@ async function callGmail(body) {
   const token = await auth.currentUser?.getIdToken(); if (!token) throw new Error('AUTH');
   const response = await fetch('/api/gmail', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
   const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'Gmail request failed.'); return data;
+}
+async function callGoogle(body) {
+  const token = await auth.currentUser?.getIdToken(); if (!token) throw new Error('AUTH');
+  const response = await fetch('/api/google', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'Google Workspace request failed.'); return data;
 }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character])); }
 function normalizedWorkspaceColor(value) {
@@ -498,6 +503,61 @@ async function loadGmailStatus() {
   try { updateGmailUi(await callGmail({ action: 'gmailStatus', ...workspacePayload() })); }
   catch (error) { updateGmailUi({ status: 'Unavailable' }); console.warn('Gmail status unavailable', error.message); }
 }
+const googleServiceLabels = Object.freeze({ 'google-drive': 'Google Drive', 'google-docs': 'Google Docs', 'google-calendar': 'Google Calendar', 'google-sheets': 'Google Sheets' });
+function updateGoogleUi(status = {}) {
+  googleWorkspaceStatus = status || {};
+  const connected = Boolean(status.connected);
+  document.querySelectorAll('[data-google-email]').forEach(element => { element.textContent = status.email || (connected ? 'Google Workspace account' : 'Drive, Docs, Calendar and Sheets'); });
+  document.querySelectorAll('[data-integration-id^="google-"]').forEach(card => {
+    const service = card.dataset.integrationId;
+    const serviceStatus = status.services?.[service];
+    const label = serviceStatus?.connected ? (serviceStatus.scopeReady === false ? 'Reconnect required' : 'Connected') : (status.status || 'Available');
+    card.dataset.integrationStatus = label;
+    card.querySelector('[data-integration-status-label]')?.replaceChildren(document.createTextNode(label));
+    card.querySelector('[data-google-status-label]')?.replaceChildren(document.createTextNode(label));
+  });
+  document.querySelectorAll('[data-google-open]').forEach(button => { button.disabled = !connected; });
+  document.querySelectorAll('[data-google-disconnect]').forEach(button => { button.disabled = !connected; });
+}
+async function loadGoogleStatus() {
+  if (!currentUser) return;
+  try { updateGoogleUi(await callGoogle({ action: 'googleStatus', ...workspacePayload() })); }
+  catch (error) { updateGoogleUi({ status: 'Unavailable' }); console.warn('Google Workspace status unavailable', error.message); }
+}
+function formatGoogleResult(value) {
+  return JSON.stringify(value, null, 2).slice(0, 12000);
+}
+window.openGoogleWorkspacePanel = function openGoogleWorkspacePanel(selectedService = '') {
+  if (!currentUser) return showCrmNotice('Google Workspace', 'Sign in before connecting Google Workspace.');
+  const { wrap, box, close: closeModal } = createModalShell('min(900px,100%)', 3100);
+  const serviceMarkup = Object.entries(googleServiceLabels).map(([service, label]) => `<div class="gc p-3 mb-3" data-google-panel-service="${service}"><div class="d-flex align-items-center justify-content-between gap-2 mb-2"><strong>${escapeHtml(label)}</strong><span class="bst sid" data-google-panel-badge>${escapeHtml(googleWorkspaceStatus.services?.[service]?.connected ? 'Connected' : 'Needs setup')}</span></div><div class="d-flex gap-2 flex-wrap mb-2" data-google-panel-controls></div><pre data-google-panel-output style="white-space:pre-wrap;max-height:190px;overflow:auto;margin:8px 0 0;color:var(--tx2);font-size:.72rem"></pre></div>`).join('');
+  box.innerHTML = `<div class="automa-modal-head"><div><h4 style="margin:0 0 5px">Google Workspace</h4><div style="font-size:.8rem;color:var(--tx3)">${escapeHtml(googleWorkspaceStatus.email || 'Connect one Google account for Drive, Docs, Calendar and Sheets.')}</div></div><button type="button" class="automa-modal-close" data-modal-close aria-label="Close" title="Close">&times;</button></div><div class="mb-3 p-3" style="background:var(--bg3);border:1px solid var(--bd);border-radius:10px;color:var(--tx2);font-size:.8rem;line-height:1.5">OAuth grants the approved Google Cloud scopes to this workspace. Read and write tests below are manual; Automa does not create, edit, append, or schedule anything without a button press.</div>${serviceMarkup}<div class="d-flex gap-2 justify-content-end flex-wrap"><button class="boc btn" data-google-refresh>Refresh status</button><button class="boc btn" data-google-disconnect>Disconnect Google</button><button class="bgrd btn" data-google-close>Close</button></div>`;
+  wrap.append(box); document.body.append(wrap); box.querySelector('[data-modal-close]').onclick = closeModal; box.querySelector('[data-google-close]').onclick = closeModal;
+  const output = service => box.querySelector(`[data-google-panel-service="${service}"] [data-google-panel-output]`);
+  const button = (service, text, handler, className = 'boc btn py-2') => { const host = box.querySelector(`[data-google-panel-service="${service}"] [data-google-panel-controls]`); if (!host) return; const item = document.createElement('button'); item.className = className; item.textContent = text; item.onclick = async () => { item.disabled = true; try { await handler(item, output(service)); } catch (error) { output(service).textContent = error.message || 'Google API request failed.'; } finally { item.disabled = false; } }; host.append(item); };
+  button('google-drive', 'List recent files', async (_, target) => { target.textContent = formatGoogleResult(await callGoogle({ action: 'googleDriveList', ...workspacePayload() })); });
+  const docsHost = box.querySelector('[data-google-panel-service="google-docs"] [data-google-panel-controls]');
+  const docsId = document.createElement('input'); docsId.className = 'oinp'; docsId.placeholder = 'Google Doc ID'; docsId.style.flex = '1 1 220px'; docsHost.append(docsId);
+  button('google-docs', 'Read document', async (_, target) => { if (!docsId.value.trim()) throw new Error('Enter a Google Docs document ID.'); target.textContent = formatGoogleResult(await callGoogle({ action: 'googleDocsGet', ...workspacePayload(), documentId: docsId.value.trim() })); });
+  const docsTitle = document.createElement('input'); docsTitle.className = 'oinp'; docsTitle.placeholder = 'New document title'; docsTitle.style.flex = '1 1 180px'; docsHost.append(docsTitle);
+  const docsText = document.createElement('input'); docsText.className = 'oinp'; docsText.placeholder = 'Text to insert'; docsText.style.flex = '1 1 220px'; docsHost.append(docsText);
+  button('google-docs', 'Create document', async (_, target) => { if (!docsTitle.value.trim() || !docsText.value.trim()) throw new Error('Enter a title and text for the test document.'); if (!window.confirm('Create this Google Doc now?')) return; target.textContent = formatGoogleResult(await callGoogle({ action: 'googleDocsCreate', ...workspacePayload(), title: docsTitle.value.trim(), text: docsText.value.trim() })); }, 'bgrd btn py-2');
+  button('google-calendar', 'List upcoming events', async (_, target) => { target.textContent = formatGoogleResult(await callGoogle({ action: 'googleCalendarList', ...workspacePayload(), days: 14 })); });
+  const calendarHost = box.querySelector('[data-google-panel-service="google-calendar"] [data-google-panel-controls]');
+  const calendarTitle = document.createElement('input'); calendarTitle.className = 'oinp'; calendarTitle.placeholder = 'Event title'; calendarTitle.style.flex = '1 1 180px'; calendarHost.append(calendarTitle);
+  const calendarStart = document.createElement('input'); calendarStart.className = 'oinp'; calendarStart.type = 'datetime-local'; calendarStart.style.flex = '1 1 190px'; calendarHost.append(calendarStart);
+  const calendarEnd = document.createElement('input'); calendarEnd.className = 'oinp'; calendarEnd.type = 'datetime-local'; calendarEnd.style.flex = '1 1 190px'; calendarHost.append(calendarEnd);
+  button('google-calendar', 'Create event', async (_, target) => { if (!calendarTitle.value.trim() || !calendarStart.value || !calendarEnd.value) throw new Error('Enter an event title, start and end.'); if (!window.confirm('Create this Google Calendar event now?')) return; target.textContent = formatGoogleResult(await callGoogle({ action: 'googleCalendarCreate', ...workspacePayload(), summary: calendarTitle.value.trim(), start: calendarStart.value, end: calendarEnd.value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' })); }, 'bgrd btn py-2');
+  const sheetsHost = box.querySelector('[data-google-panel-service="google-sheets"] [data-google-panel-controls]');
+  const sheetsId = document.createElement('input'); sheetsId.className = 'oinp'; sheetsId.placeholder = 'Spreadsheet ID'; sheetsId.style.flex = '1 1 220px'; sheetsHost.append(sheetsId);
+  const sheetsRange = document.createElement('input'); sheetsRange.className = 'oinp'; sheetsRange.placeholder = 'Sheet1!A1:C10'; sheetsRange.style.flex = '1 1 160px'; sheetsHost.append(sheetsRange);
+  button('google-sheets', 'Read range', async (_, target) => { if (!sheetsId.value.trim() || !sheetsRange.value.trim()) throw new Error('Enter a spreadsheet ID and range.'); target.textContent = formatGoogleResult(await callGoogle({ action: 'googleSheetsRead', ...workspacePayload(), spreadsheetId: sheetsId.value.trim(), range: sheetsRange.value.trim() })); });
+  const sheetsValues = document.createElement('input'); sheetsValues.className = 'oinp'; sheetsValues.placeholder = 'Append JSON, e.g. [["Lead","New"]]'; sheetsValues.style.flex = '1 1 260px'; sheetsHost.append(sheetsValues);
+  button('google-sheets', 'Append rows', async (_, target) => { if (!sheetsId.value.trim() || !sheetsRange.value.trim()) throw new Error('Enter a spreadsheet ID and range.'); let values; try { values = JSON.parse(sheetsValues.value); } catch { throw new Error('Append values must be valid JSON rows.'); } if (!window.confirm('Append these rows to Google Sheets now?')) return; target.textContent = formatGoogleResult(await callGoogle({ action: 'googleSheetsAppend', ...workspacePayload(), spreadsheetId: sheetsId.value.trim(), range: sheetsRange.value.trim(), values })); }, 'bgrd btn py-2');
+  box.querySelector('[data-google-refresh]').onclick = async event => { event.currentTarget.disabled = true; try { await loadGoogleStatus(); Object.entries(googleServiceLabels).forEach(([service]) => { const badge = box.querySelector(`[data-google-panel-service="${service}"] [data-google-panel-badge]`); if (badge) badge.textContent = googleWorkspaceStatus.services?.[service]?.connected ? 'Connected' : 'Needs setup'; }); } finally { event.currentTarget.disabled = false; } };
+  box.querySelector('[data-google-disconnect]').onclick = async event => { if (!window.confirm('Disconnect Google Workspace from this workspace and delete its server-side refresh token?')) return; event.currentTarget.disabled = true; try { await callGoogle({ action: 'googleDisconnect', ...workspacePayload() }); updateGoogleUi({ status: 'Disconnected' }); showCrmNotice('Google Workspace', 'Google Workspace was disconnected from this workspace.'); closeModal(); } catch (error) { showCrmNotice('Google Workspace', error.message || 'Google could not be disconnected.'); event.currentTarget.disabled = false; } };
+  if (selectedService) box.querySelector(`[data-google-panel-service="${selectedService}"]`)?.scrollIntoView({ block: 'start' });
+};
 function recipientList(value) {
   return String(value || '').split(/[;,\n]+/).map(email => email.trim()).filter(Boolean);
 }
@@ -767,11 +827,16 @@ async function loadWorkspaces(user, requestedId = null) {
   try { const result = await callBusiness({ action: 'organizationList' }); organizations = result.organizations || []; } catch (error) { console.warn('Organizations unavailable', error.message); }
   workspaceOptions = [{ id: null, name: 'Personal workspace', color: DEFAULT_WORKSPACE_COLOR, role: 'owner', members: [], pendingInvites: [] }, ...organizations.map(option => ({ ...option, color: normalizedWorkspaceColor(option.color) }))];
   workspace = workspaceOptions.find(option => option.id === requestedId) || workspaceOptions.find(option => option.id === workspace.id) || workspaceOptions[0];
-  updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(user); await loadGmailStatus();
+  updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(user); await Promise.all([loadGmailStatus(), loadGoogleStatus()]);
   const gmailResult = new URLSearchParams(window.location.search).get('gmail');
   if (gmailResult) {
     window.history.replaceState({}, '', window.location.pathname + window.location.hash);
     showCrmNotice('Gmail', gmailResult === 'connected' ? 'Gmail is connected. You can now generate, preview, edit, and send HTML email.' : 'Gmail could not complete the connection. Review the Google OAuth settings in Vercel and try again.');
+  }
+  const googleResult = new URLSearchParams(window.location.search).get('google');
+  if (googleResult) {
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+    showCrmNotice('Google Workspace', googleResult === 'connected' ? 'Google Workspace is connected. Drive, Docs, Calendar and Sheets are ready for manual tests.' : 'Google Workspace could not complete the connection. Review the Google OAuth settings and redirect URI in Google Cloud and Vercel, then try again.');
   }
 }
 function wireWorkspace() {
@@ -807,8 +872,18 @@ function wireWorkspace() {
     }
     const integrationId = card?.dataset.integrationId || '';
     const catalog = INTEGRATION_CATALOG[integrationId] || { label: card?.querySelector('.fw-semibold')?.textContent?.trim() || 'Integration', scope: '' };
+    if (integrationId.startsWith('google-')) {
+      btn.addEventListener('click', () => window.openGoogleWorkspacePanel(integrationId));
+      return;
+    }
     btn.addEventListener('click', () => modal(`Configure ${catalog.label}`, [{ key: 'provider', label: 'Provider', value: catalog.label, readonly: true }, { key: 'status', label: 'Connection status', type: 'select', value: card?.dataset.integrationStatus || 'Available', options: [{ value: 'Available', label: 'Available' }, { value: 'Connected', label: 'Connected' }, { value: 'Paused', label: 'Paused' }] }, { key: 'scope', label: 'Approved scope', value: catalog.scope, placeholder: catalog.scope }, { key: 'notes', label: 'Notes', placeholder: 'How this connection should be used in a workflow' }], data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection: 'integrations', id: integrationId || undefined, data })));
   });
+  document.querySelectorAll('[data-google-connect]').forEach(button => button.addEventListener('click', async () => {
+    button.disabled = true;
+    try { const result = await callGoogle({ action: 'googleConnect', ...workspacePayload() }); window.location.assign(result.authorizeUrl); }
+    catch (error) { showCrmNotice('Connect Google Workspace', error.message || 'Google Workspace could not start the secure connection.'); button.disabled = false; }
+  }));
+  document.querySelectorAll('[data-google-open]').forEach(button => button.addEventListener('click', () => window.openGoogleWorkspacePanel(button.closest('[data-integration-id]')?.dataset.integrationId || '')));
   const telegramStatusButton = section('integrations')?.querySelector('[data-telegram-status]');
   telegramStatusButton?.addEventListener('click', async () => {
     telegramStatusButton.disabled = true;
@@ -883,7 +958,7 @@ function subscribe(user) {
 
 if (Object.values(config).every(Boolean)) {
   const app = initializeApp(config); auth = getAuth(app); db = getFirestore(app);
-  onAuthStateChanged(auth, user => { stopSubscriptions(); telegramIntegration = {}; gmailIntegration = {}; resetCrmState(); currentUser = user; if (user) { window.loginSuccess?.(userShape(user)); loadWorkspaces(user); } else { generation++; workspace = { id: null, name: 'Personal workspace', color: DEFAULT_WORKSPACE_COLOR, role: 'owner', members: [], pendingInvites: [] }; workspaceOptions = [workspace]; updateWorkspaceUi(); updateGmailUi({ status: 'Needs setup' }); document.querySelector('#dashboard')?.style.setProperty('display', 'none'); document.querySelector('#landing')?.style.setProperty('display', 'block'); } });
+  onAuthStateChanged(auth, user => { stopSubscriptions(); telegramIntegration = {}; gmailIntegration = {}; googleWorkspaceStatus = {}; resetCrmState(); currentUser = user; if (user) { window.loginSuccess?.(userShape(user)); loadWorkspaces(user); } else { generation++; workspace = { id: null, name: 'Personal workspace', color: DEFAULT_WORKSPACE_COLOR, role: 'owner', members: [], pendingInvites: [] }; workspaceOptions = [workspace]; updateWorkspaceUi(); updateGmailUi({ status: 'Needs setup' }); updateGoogleUi({ status: 'Needs setup' }); document.querySelector('#dashboard')?.style.setProperty('display', 'none'); document.querySelector('#landing')?.style.setProperty('display', 'block'); } });
   const forgot = document.querySelector('#fLogin a[href="#"]');
   forgot?.addEventListener('click', async event => { event.preventDefault(); const email = $('loginEmail')?.value.trim(); if (!email) return showError('login', 'Enter your email first.'); try { await sendPasswordResetEmail(auth, email); showError('login', 'If that account exists, a reset email has been sent.'); } catch (error) { showError('login', errorMessage(error)); } });
 } else {

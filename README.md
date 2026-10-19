@@ -466,7 +466,18 @@ El catálogo de Integrations mantiene un flujo común para canales y herramienta
 
 `Telegram o Discord → Drive/Docs → Calendar → Sheets → Gmail`
 
-Telegram, Discord, GitHub, Gmail, Google Drive, Google Docs, Google Calendar y Google Sheets se muestran con su alcance separado por espacio de trabajo. La opción **Configure** guarda el proveedor, el estado, el alcance aprobado y las notas de uso en `integrations`, para que cada paso pueda documentarse antes de activarlo en una automatización. Gmail conserva las acciones conectadas de OAuth (borradores HTML, revisión de bandeja, respuestas y envío). Las APIs de Drive, Docs, Calendar y Sheets deben habilitarse en Google Cloud y añadirse a la autorización OAuth antes de ejecutar acciones de lectura o escritura sobre esos servicios.
+Telegram, Discord, GitHub, Gmail, Google Drive, Google Docs, Google Calendar y Google Sheets se muestran con su alcance separado por espacio de trabajo. Gmail conserva sus acciones OAuth existentes. Drive, Docs, Calendar y Sheets comparten una conexión OAuth de Google Workspace: un clic en **Connect Google** solicita `drive`, `documents`, `calendar` y `spreadsheets`, guarda el refresh token únicamente en `private/googleWorkspace` y marca los cuatro servicios como **Connected**. El navegador nunca recibe ese token.
+
+En Google Cloud habilita **Google Drive API**, **Google Docs API**, **Google Calendar API** y **Google Sheets API**. Registra exactamente `https://automa.wstudio3d.com/api/google` como Redirect URI del cliente OAuth web y agrega tu cuenta como usuario de prueba mientras la aplicación esté en pruebas. En Vercel configura:
+
+```env
+GOOGLE_CLIENT_ID=             # OAuth client ID; puede ser el mismo cliente de Gmail
+GOOGLE_CLIENT_SECRET=         # OAuth client secret
+GOOGLE_OAUTH_STATE_SECRET=    # secreto aleatorio largo, distinto del client secret
+GOOGLE_WORKSPACE_REDIRECT_URI=https://automa.wstudio3d.com/api/google
+```
+
+Si `GOOGLE_CLIENT_ID` o `GOOGLE_CLIENT_SECRET` quedan vacíos, la función puede reutilizar `GMAIL_CLIENT_ID` y `GMAIL_CLIENT_SECRET`; aun así, la nueva URI `/api/google` debe estar registrada en Google Cloud. Tras guardar las variables, redeploya Vercel y pulsa **Connect Google**. La pantalla de retorno muestra **Connected** sólo después de guardar el token en el workspace. Cada tarjeta incluye **Test**: Drive lista archivos recientes, Docs lee o crea un documento, Calendar lista o crea un evento confirmado y Sheets lee o agrega filas confirmadas. Las escrituras son siempre botones manuales y quedan registradas como metadatos en `runs`.
 
 El landing usa los precios Starter de **$49/mes** y Pro de **$149/mes**. El selector anual conserva el descuento del 30% y muestra $34 y $104 al mes, respectivamente.
 
@@ -512,6 +523,8 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 
 **Gmail vuelve a Automa con error.** Agrega la cuenta como usuario de prueba en OAuth Consent Screen, verifica que Gmail API esté habilitada y revisa que el cliente sea de tipo Web application. Si Google no devuelve refresh token, vuelve a conectar Gmail: Automa solicita consentimiento explícito para obtener uno nuevo.
 
+**Google Workspace vuelve con error o aparece `Needs setup`.** Confirma las cuatro APIs de Google, agrega `https://automa.wstudio3d.com/api/google` a las Redirect URIs del mismo cliente OAuth y revisa `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_STATE_SECRET` y `GOOGLE_WORKSPACE_REDIRECT_URI` en Production. Si cambiaste scopes o cliente, pulsa **Disconnect Google** y vuelve a conectar para obtener un refresh token nuevo. Un error `Reconnect required` indica que Google revocó el token o que faltan scopes; no se soluciona con una API key.
+
 **El emulador no inicia.** Instala Java 21+ y vuelve a ejecutar `npm run test:rules`.
 
 ## 10. Archivos importantes
@@ -522,6 +535,7 @@ Antes de producción prueba dominios autorizados, dos cuentas aisladas, claves a
 - [`api/business.js`](api/business.js): función segura de Vercel y Firebase Admin.
 - [`api/chat.js`](api/chat.js): autenticación REST y conexión aislada con OpenAI.
 - [`api/gmail.js`](api/gmail.js): OAuth de Google, generación de HTML y envío seguro por Gmail.
+- [`api/google.js`](api/google.js): OAuth compartido y acciones protegidas de Drive, Docs, Calendar y Sheets.
 - [`api/telegram.js`](api/telegram.js): webhook autenticado para WSTUDIO3DBot.
 - [`scripts/set-telegram-webhook.mjs`](scripts/set-telegram-webhook.mjs): registro seguro de la URL de Telegram.
 - [`server/domain.js`](server/domain.js): validación y planificación.
