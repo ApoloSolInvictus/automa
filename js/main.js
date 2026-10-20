@@ -192,7 +192,7 @@ function dbNav(section, btn) {
     const ch = document.getElementById('profileChevron');
     if (ch) ch.style.transform = 'rotate(0deg)';
     // init charts when relevant section shown
-    if (section === 'analytics') setTimeout(initAnalyticsChart, 100);
+    if (section === 'analytics') setTimeout(() => initAnalyticsChart(window.__automaAnalyticsDaily || []), 100);
     if (section === 'overview') setTimeout(() => { if (!ovChartInst) initOverviewChart(); }, 100);
 }
 
@@ -301,7 +301,7 @@ window.updateOverviewChart = function updateOverviewChart(series = []) {
     ovChartInst.update('none');
 };
 
-function initAnalyticsChart() {
+function initAnalyticsChart(series = []) {
     const ctx = document.getElementById('anChart');
     if (!ctx) return;
     if (anChartInst) {
@@ -315,7 +315,7 @@ function initAnalyticsChart() {
     const g2 = c.createLinearGradient(0, 0, 0, 250);
     g2.addColorStop(0, 'rgba(52,211,153,0.2)');
     g2.addColorStop(1, 'rgba(52,211,153,0.01)');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const points = Array.isArray(series) && series.length ? series : Array.from({ length: 30 }, (_, i) => ({ label: `${i + 1}`, requests: 0, successes: 0 }));
     const {
         grid,
         ticks
@@ -323,10 +323,10 @@ function initAnalyticsChart() {
     anChartInst = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: months,
+            labels: points.map(point => point.label || ''),
             datasets: [{
-                    label: 'Conversations',
-                    data: [8200, 9100, 10400, 9800, 11200, 12800, 14100, 15600, 17200, 19000, 21400, 24800],
+                    label: 'Agent runs',
+                    data: points.map(point => Number(point.requests) || 0),
                     fill: true,
                     backgroundColor: g1,
                     borderColor: '#8b5cf6',
@@ -336,8 +336,8 @@ function initAnalyticsChart() {
                     tension: .4
                 },
                 {
-                    label: 'Completed by Automa',
-                    data: [6560, 7644, 8736, 8330, 9632, 11264, 12408, 13728, 15136, 16720, 18834, 22016],
+                    label: 'Completed',
+                    data: points.map(point => Number(point.successes) || 0),
                     fill: true,
                     backgroundColor: g2,
                     borderColor: '#34d399',
@@ -402,6 +402,18 @@ function initAnalyticsChart() {
         }
     });
 }
+
+window.updateAnalyticsChart = function updateAnalyticsChart(series = []) {
+    window.__automaAnalyticsDaily = Array.isArray(series) ? series : [];
+    const ctx = document.getElementById('anChart');
+    if (!ctx) return;
+    if (!anChartInst) return initAnalyticsChart(window.__automaAnalyticsDaily);
+    const points = window.__automaAnalyticsDaily.length ? window.__automaAnalyticsDaily : Array.from({ length: 30 }, (_, i) => ({ label: `${i + 1}`, requests: 0, successes: 0 }));
+    anChartInst.data.labels = points.map(point => point.label || '');
+    anChartInst.data.datasets[0].data = points.map(point => Number(point.requests) || 0);
+    anChartInst.data.datasets[1].data = points.map(point => Number(point.successes) || 0);
+    anChartInst.update('none');
+};
 
 function updateChartColors() {
     [ovChartInst, anChartInst].forEach(ch => {

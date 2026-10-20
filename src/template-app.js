@@ -180,11 +180,14 @@ function renderOverviewStats() {
 function updateStats(name, rows) {
   overviewRows[name] = rows;
   renderOverviewStats();
+  if (name === 'automations' || name === 'runs') renderAnalyticsWorkspacePanels();
 }
 function resetStats() {
   Object.keys(overviewRows).forEach(name => delete overviewRows[name]);
   agentMetrics = null;
   renderOverviewStats();
+  renderAnalyticsAgentList({ agents: [] }); renderAnalyticsChannelList({}); renderAnalyticsCrmSnapshot(); renderAnalyticsWorkflowList();
+  window.updateAnalyticsChart?.([]);
   const target = $('liveActivity');
   if (target) target.replaceChildren(Object.assign(document.createElement('div'), { className: 'crm-empty', textContent: 'No activity recorded for this workspace yet.' }));
 }
@@ -333,6 +336,73 @@ async function callBusiness(body) {
   const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Request failed.'); return data;
 }
 function metricDisplay(value, suffix = '') { return Number.isFinite(Number(value)) ? `${Number(value).toLocaleString()}${suffix}` : '—'; }
+function analyticsChannelLabel(channel) {
+  const labels = { chat: 'AI Chat', telegram: 'Telegram', gmail: 'Gmail', dashboard: 'Dashboard', automation: 'Automations', api: 'API' };
+  const value = String(channel || 'other').toLowerCase();
+  return labels[value] || value.replace(/[-_]+/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
+function analyticsEmpty(host, message) {
+  if (!host) return;
+  const empty = document.createElement('div'); empty.className = 'crm-empty'; empty.textContent = message; host.replaceChildren(empty);
+}
+function renderAnalyticsAgentList(metrics = {}) {
+  const host = document.querySelector('[data-analytics-agents-list]'); if (!host) return;
+  const agents = (metrics.agents || []).filter(agent => Number(agent.requestCount) > 0).sort((a, b) => Number(b.requestCount) - Number(a.requestCount));
+  if (!agents.length) return analyticsEmpty(host, 'No agent runs recorded yet.');
+  host.replaceChildren(...agents.slice(0, 8).map((agent, index) => {
+    const row = document.createElement('div');
+    const head = document.createElement('div'); head.className = 'd-flex justify-content-between mb-1'; head.style.fontSize = '.82rem';
+    const name = document.createElement('span'); name.textContent = agent.name || agent.id;
+    const rate = document.createElement('span'); rate.style.cssText = `color:${['#34d399', '#a78bfa', '#60a5fa', '#fbbf24'][index % 4]};font-weight:600`; rate.textContent = `${Number(agent.successRate || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+    head.append(name, rate);
+    const track = document.createElement('div'); track.className = 'rtbar';
+    const fill = document.createElement('div'); fill.className = 'rtfill'; fill.style.width = `${Math.min(100, Math.max(0, Number(agent.successRate) || 0))}%`; track.append(fill);
+    const meta = document.createElement('div'); meta.style.cssText = 'font-size:.7rem;color:var(--tx3);margin-top:4px'; meta.textContent = `${Number(agent.requestCount).toLocaleString()} run${Number(agent.requestCount) === 1 ? '' : 's'} · ${modelLabel(agent.model)}`;
+    row.append(head, track, meta); return row;
+  }));
+}
+function renderAnalyticsChannelList(summary = {}) {
+  const host = document.querySelector('[data-analytics-channels-list]'); if (!host) return;
+  const channels = Object.entries(summary.channels || {}).filter(([, count]) => Number(count) > 0).sort((a, b) => Number(b[1]) - Number(a[1]));
+  if (!channels.length) return analyticsEmpty(host, 'No channel activity yet.');
+  const total = channels.reduce((sum, [, count]) => sum + Number(count), 0);
+  host.replaceChildren(...channels.slice(0, 6).map(([channel, count]) => {
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:.78rem';
+    const label = document.createElement('span'); label.style.color = 'var(--tx2)'; label.textContent = analyticsChannelLabel(channel);
+    const value = document.createElement('strong'); value.textContent = `${Number(count).toLocaleString()} · ${Math.round(Number(count) / total * 100)}%`;
+    row.append(label, value); return row;
+  }));
+}
+function renderAnalyticsCrmSnapshot() {
+  const host = document.querySelector('[data-analytics-crm-list]'); if (!host) return;
+  const rows = [
+    ['Companies', crmState.companies.length],
+    ['Contacts', crmState.contacts.length],
+    ['Open opportunities', crmState.opportunities.filter(row => !['won', 'lost'].includes(row.stage)).length],
+    ['Active contracts', crmState.contracts.filter(row => row.status === 'active').length],
+    ['Active services', crmState.services.filter(row => row.status === 'active').length]
+  ];
+  if (!rows.some(([, count]) => count > 0)) return analyticsEmpty(host, 'No CRM records yet.');
+  host.replaceChildren(...rows.map(([label, count]) => {
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:.78rem';
+    const name = document.createElement('span'); name.style.color = 'var(--tx2)'; name.textContent = label;
+    const value = document.createElement('strong'); value.textContent = Number(count).toLocaleString(); row.append(name, value); return row;
+  }));
+}
+function renderAnalyticsWorkflowList() {
+  const host = document.querySelector('[data-analytics-workflows-list]'); if (!host) return;
+  const workflows = (overviewRows.automations || []).slice().sort((a, b) => Number(b.runCount || 0) - Number(a.runCount || 0));
+  if (!workflows.length) return analyticsEmpty(host, 'No workflows yet.');
+  host.replaceChildren(...workflows.slice(0, 6).map(workflow => {
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:.78rem';
+    const name = document.createElement('span'); name.style.cssText = 'color:var(--tx2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'; name.textContent = workflow.name || workflow.id;
+    const meta = document.createElement('strong'); meta.style.color = workflow.status === 'enabled' ? '#34d399' : '#a8a8c8'; meta.textContent = `${Number(workflow.runCount || 0).toLocaleString()} run${Number(workflow.runCount || 0) === 1 ? '' : 's'} · ${workflow.status || 'draft'}`;
+    row.append(name, meta); return row;
+  }));
+}
+function renderAnalyticsWorkspacePanels() {
+  renderAnalyticsCrmSnapshot(); renderAnalyticsWorkflowList(); renderAnalyticsChannelList(agentMetrics?.summary || {});
+}
 function renderAgentMetrics(metrics) {
   if (!metrics) return;
   const byId = new Map((metrics.agents || []).map(agent => [agent.id, agent]));
@@ -353,17 +423,17 @@ function renderAgentMetrics(metrics) {
   const analytics = document.querySelector('#sec-analytics');
   if (analytics) {
     const statValues = analytics.querySelectorAll('[data-analytics-value]');
-    if (statValues[0]) statValues[0].textContent = Number(summary.pipelineValue) ? `$${Number(summary.pipelineValue).toLocaleString()}` : '—';
-    if (statValues[1]) statValues[1].textContent = '—';
+    const hasRuns = Number(summary.totalRequests) > 0;
+    if (statValues[0]) statValues[0].textContent = Number(summary.pipelineValue) > 0 ? `$${Number(summary.pipelineValue).toLocaleString()}` : '—';
+    if (statValues[1]) statValues[1].textContent = hasRuns ? `${Number(summary.successRate || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}%` : '—';
     if (statValues[2]) statValues[2].textContent = metricDisplay(summary.customersSupported);
-    if (statValues[3]) statValues[3].textContent = `${Number(summary.successRate || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
-    analytics.querySelectorAll('[data-analytics-agent-id]').forEach(row => {
-      const metric = byId.get(row.dataset.analyticsAgentId); if (!metric) return;
-      const rate = row.querySelector('[data-analytics-agent-rate]'); const fill = row.querySelector('.rtfill');
-      if (rate) rate.textContent = `${metric.successRate.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
-      if (fill) fill.style.width = `${Math.min(100, Math.max(0, metric.successRate))}%`;
-    });
+    if (statValues[3]) statValues[3].textContent = hasRuns ? `${Number(summary.automatedCompletion || summary.successRate || 0).toLocaleString(undefined, { maximumFractionDigits: 1 })}%` : '—';
+    analytics.querySelectorAll('[data-analytics-badge]').forEach(badge => { badge.textContent = hasRuns ? 'Live' : 'No activity'; badge.style.color = hasRuns ? '#34d399' : 'var(--tx3)'; });
+    const period = analytics.querySelector('[data-analytics-period]'); if (period) period.textContent = `Last ${metrics.periodDays || 30} days`;
+    const empty = analytics.querySelector('[data-analytics-chart-empty]'); if (empty) { empty.textContent = hasRuns ? `${Number(summary.totalRequests).toLocaleString()} runs recorded · ${Number(summary.successfulRequests || 0).toLocaleString()} completed` : 'Waiting for the first recorded agent run.'; empty.style.display = hasRuns ? 'block' : 'block'; }
   }
+  window.updateAnalyticsChart?.(metrics.daily || []);
+  renderAnalyticsAgentList(metrics); renderAnalyticsChannelList(summary); renderAnalyticsWorkspacePanels();
   renderOverviewStats();
 }
 async function loadAgentMetrics() {
@@ -1140,7 +1210,7 @@ function subscribe(user) {
   };
   watch('leads', () => renderActivity()); watch('tasks', () => renderActivity()); watch('runs', () => { renderActivity(); scheduleAgentMetricsRefresh(); });
   watch('agents', rows => renderEntities('agents', rows)); watch('automations', rows => renderEntities('automations', rows)); watch('integrations', rows => renderEntities('integrations', rows));
-  watch('companies', rows => { crmState.companies = rows; renderCrm(); renderActivity(); renderOverviewStats(); }); watch('contacts', rows => { crmState.contacts = rows; renderCrm(); renderActivity(); renderOverviewStats(); }); watch('opportunities', rows => { crmState.opportunities = rows; renderCrm(); renderActivity(); renderOverviewStats(); }); watch('activities', rows => { crmState.activities = rows; renderCrm(); renderActivity(); renderOverviewStats(); }); watch('contracts', rows => { crmState.contracts = rows; renderCrm(); renderActivity(); renderOverviewStats(); }); watch('services', rows => { crmState.services = rows; renderCrm(); renderActivity(); renderOverviewStats(); });
+   watch('companies', rows => { crmState.companies = rows; renderCrm(); renderActivity(); renderOverviewStats(); renderAnalyticsCrmSnapshot(); }); watch('contacts', rows => { crmState.contacts = rows; renderCrm(); renderActivity(); renderOverviewStats(); renderAnalyticsCrmSnapshot(); }); watch('opportunities', rows => { crmState.opportunities = rows; renderCrm(); renderActivity(); renderOverviewStats(); renderAnalyticsCrmSnapshot(); }); watch('activities', rows => { crmState.activities = rows; renderCrm(); renderActivity(); renderOverviewStats(); renderAnalyticsCrmSnapshot(); }); watch('contracts', rows => { crmState.contracts = rows; renderCrm(); renderActivity(); renderOverviewStats(); renderAnalyticsCrmSnapshot(); }); watch('services', rows => { crmState.services = rows; renderCrm(); renderActivity(); renderOverviewStats(); renderAnalyticsCrmSnapshot(); });
   wireWorkspace();
 }
 
