@@ -175,6 +175,13 @@ export function parseCommand(body) {
     if (!ORGANIZATION_ROLES.includes(role)) throw new InputError('Rol de organización inválido.');
     return { action: body.action, orgId, email, role };
   }
+  if (body.action === 'runAutomation') {
+    const automationId = text(body.automationId, 'Automatización', 80);
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(automationId)) throw new InputError('Automatización inválida.');
+    const message = body.message == null ? 'Run a safe preview of this workflow and describe the next step.' : text(body.message, 'Mensaje', 4000);
+    const orgId = body.orgId == null ? null : organizationId(body.orgId);
+    return { action: body.action, automationId, message, orgId };
+  }
   if (body.action === 'runAgent') {
     const agentId = text(body.agentId, 'Agente', 80);
     if (!/^[a-zA-Z0-9_-]{1,80}$/.test(agentId)) throw new InputError('Agente inválido.');
@@ -205,7 +212,7 @@ export function parseCommand(body) {
     if (!body.data || typeof body.data !== 'object' || Array.isArray(body.data)) throw new InputError('Datos inválidos.');
     const data = {};
     for (const [key, value] of Object.entries(body.data)) {
-      const maxValueLength = collection === 'agents' && key === 'instructions' ? 6000 : 500;
+      const maxValueLength = collection === 'agents' && key === 'instructions' || collection === 'automations' && key === 'steps' ? 6000 : 500;
       if (!/^[a-zA-Z][a-zA-Z0-9_]{0,30}$/.test(key) || typeof value !== 'string' || value.length > maxValueLength) throw new InputError('Datos inválidos.');
       data[key] = value.trim();
     }
@@ -219,6 +226,17 @@ export function parseCommand(body) {
       if (data.instructions && data.instructions.length > 6000) throw new InputError('Instrucciones de agente inválidas.');
       if (data.model && !isAllowedOpenAIModel(data.model)) throw new InputError('Modelo OpenAI no permitido.');
       if (data.status && !['enabled', 'paused'].includes(data.status)) throw new InputError('Estado de agente inválido.');
+    }
+    if (collection === 'automations') {
+      const allowedKeys = ['name', 'description', 'trigger', 'channel', 'agentId', 'integration', 'schedule', 'steps', 'status', 'approvalMode', 'blueprint'];
+      if (Object.keys(data).some(key => !allowedKeys.includes(key))) throw new InputError('Configuración de automatización inválida.');
+      if (!data.name || data.name.length > 120) throw new InputError('Nombre de automatización inválido.');
+      if (!data.trigger || data.trigger.length > 240) throw new InputError('Disparador de automatización inválido.');
+      if (!data.steps || data.steps.length > 6000) throw new InputError('Pasos de automatización inválidos.');
+      if (data.channel && !['dashboard', 'chat', 'telegram', 'gmail', 'automation'].includes(data.channel)) throw new InputError('Canal de automatización inválido.');
+      if (data.agentId && !/^[a-zA-Z0-9_-]{1,80}$/.test(data.agentId)) throw new InputError('Agente de automatización inválido.');
+      if (data.status && !['draft', 'enabled', 'paused'].includes(data.status)) throw new InputError('Estado de automatización inválido.');
+      if (data.approvalMode && !['review', 'automatic'].includes(data.approvalMode)) throw new InputError('Modo de aprobación inválido.');
     }
     if (CRM_COLLECTIONS.includes(collection)) {
       const allowedKeys = CRM_FIELDS[collection];

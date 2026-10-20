@@ -42,6 +42,15 @@ test('validates agent runs and OpenAI-only agent configuration', () => {
  assert.throws(() => parseCommand({action:'saveEntity',collection:'agents',data:{name:'Other',model:'claude-3.5'}}));
  assert.throws(() => parseCommand({action:'saveEntity',collection:'agents',data:{name:'Paused',model:'gpt-5.6-sol',status:'Active'}}));
 });
+test('validates automation workflows and safe preview commands', () => {
+ const saved = parseCommand({ action:'saveEntity', collection:'automations', data:{ name:'Triage', trigger:'New customer message', channel:'telegram', agentId:'support-bot-v2-1', steps:'Classify and prepare a reply.', status:'enabled', approvalMode:'review', blueprint:'triage' } });
+ assert.equal(saved.data.status, 'enabled');
+ const preview = parseCommand({ action:'runAutomation', automationId:'workflow_123', message:'A customer needs help.' });
+ assert.deepEqual(preview, { action:'runAutomation', automationId:'workflow_123', message:'A customer needs help.', orgId:null });
+ assert.throws(() => parseCommand({ action:'saveEntity', collection:'automations', data:{ name:'Bad', trigger:'Message', steps:'Run', channel:'unknown' } }));
+ assert.throws(() => parseCommand({ action:'saveEntity', collection:'automations', data:{ name:'Bad', trigger:'Message', steps:'Run', status:'active' } }));
+ assert.throws(() => parseCommand({ action:'runAutomation', automationId:'../unsafe' }));
+});
 test('validates bounded agent metrics requests', () => {
  const parsed = parseCommand({ action: 'agentMetrics', days: 14, agentId: 'sales-qualifier' });
  assert.deepEqual(parsed, { action: 'agentMetrics', days: 14, agentId: 'sales-qualifier', orgId: null });

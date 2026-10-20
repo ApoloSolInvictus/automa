@@ -1294,9 +1294,9 @@
                   <div class="d-flex align-items-center justify-content-between mb-4">
                      <div>
                         <h4 style="font-size:1.4rem;font-weight:700;margin-bottom:4px">Automations</h4>
-                        <p style="font-size:.875rem;color:var(--tx3);margin:0">Manage your active workflow automations.</p>
+                        <p style="font-size:.875rem;color:var(--tx3);margin:0">Create, test and manage workflows saved in this workspace.</p>
                      </div>
-                     <button class="bgrd btn px-3 py-2" style="font-size:.85rem"><i class="fa-solid fa-plus me-2"></i>Create Automation</button>
+                     <button class="bgrd btn px-3 py-2" data-create-automation style="font-size:.85rem"><i class="fa-solid fa-plus me-2"></i>Create Automation</button>
                   </div>
                   <div style="background:var(--sf);border:1px solid var(--bd);border-radius:18px;overflow:hidden">
                      <table class="db-table">
@@ -1304,62 +1304,13 @@
                            <tr>
                               <th>Automation</th>
                               <th>Trigger</th>
-                              <th>Runs Today</th>
+                              <th>Runs</th>
                               <th>Status</th>
                               <th>Actions</th>
                            </tr>
                         </thead>
-                        <tbody>
-                           <tr>
-                              <td>
-                                 <div style="font-weight:600">Customer request triage</div>
-                                 <div style="font-size:.75rem;color:var(--tx3)">Customer Support Agent • Customer inbox</div>
-                              </td>
-                              <td style="font-size:.82rem">New customer message</td>
-                              <td style="font-weight:600;color:#34d399">248</td>
-                              <td><span class="bst son">Active</span></td>
-                              <td><button class="boc btn px-2 py-1" style="font-size:.75rem;border-radius:8px"><i class="fa-solid fa-pencil"></i></button></td>
-                           </tr>
-                           <tr>
-                              <td>
-                                 <div style="font-weight:600">Contract intake follow-up</div>
-                                 <div style="font-size:.75rem;color:var(--tx3)">Follow-up Agent • Document intake</div>
-                              </td>
-                              <td style="font-size:.82rem">Missing contract details</td>
-                              <td style="font-weight:600;color:#a78bfa">93</td>
-                              <td><span class="bst sbz">Running</span></td>
-                              <td><button class="boc btn px-2 py-1" style="font-size:.75rem;border-radius:8px"><i class="fa-solid fa-pencil"></i></button></td>
-                           </tr>
-                           <tr>
-                              <td>
-                                 <div style="font-weight:600">Customer context sync</div>
-                                 <div style="font-size:.75rem;color:var(--tx3)">Business Flow Analyst • CRM records</div>
-                              </td>
-                              <td style="font-size:.82rem">Every 30 minutes</td>
-                              <td style="font-weight:600;color:#60a5fa">48</td>
-                              <td><span class="bst son">Active</span></td>
-                              <td><button class="boc btn px-2 py-1" style="font-size:.75rem;border-radius:8px"><i class="fa-solid fa-pencil"></i></button></td>
-                           </tr>
-                           <tr>
-                              <td>
-                                 <div style="font-weight:600">Escalation alerts</div>
-                                 <div style="font-size:.75rem;color:var(--tx3)">Customer Support Agent • Team escalations</div>
-                              </td>
-                              <td style="font-size:.82rem">Low confidence score &lt; 70%</td>
-                              <td style="font-weight:600;color:#fbbf24">9</td>
-                              <td><span class="bst sid">Standby</span></td>
-                              <td><button class="boc btn px-2 py-1" style="font-size:.75rem;border-radius:8px"><i class="fa-solid fa-pencil"></i></button></td>
-                           </tr>
-                           <tr>
-                              <td>
-                                 <div style="font-weight:600">Client and contract qualification</div>
-                                 <div style="font-size:.75rem;color:var(--tx3)">Contract Coordinator • Intake pipeline</div>
-                              </td>
-                              <td style="font-size:.82rem">New client inquiry</td>
-                              <td style="font-weight:600;color:#34d399">127</td>
-                              <td><span class="bst son">Active</span></td>
-                              <td><button class="boc btn px-2 py-1" style="font-size:.75rem;border-radius:8px"><i class="fa-solid fa-pencil"></i></button></td>
-                           </tr>
+                        <tbody id="automationRecords">
+                           <tr><td colspan="5" class="crm-empty">No workflows yet. Choose a blueprint or create a custom automation.</td></tr>
                         </tbody>
                      </table>
                   </div>

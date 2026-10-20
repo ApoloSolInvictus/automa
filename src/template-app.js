@@ -204,6 +204,7 @@ function renderActivity() {
 }
 function renderEntities(sectionId, rows) {
   const host = document.querySelector(`#sec-${sectionId}`); if (!host) return;
+  if (sectionId === 'automations') { renderAutomationRows(rows); return; }
   if (sectionId === 'integrations') {
     telegramIntegration = rows.find(row => row.id === 'telegram' || row.provider?.toLowerCase() === 'telegram') || {};
     gmailIntegration = rows.find(row => row.id === 'gmail' || row.provider?.toLowerCase() === 'gmail') || {};
@@ -533,6 +534,44 @@ const AUTOMATION_BLUEPRINTS = Object.freeze({
     metrics: 'Cycle time, overdue steps, and approval completion.'
   }
 });
+function automationAgentOptions(value = 'support-bot-v2-1') {
+  const defaults = Object.entries(DEFAULT_AGENTS).map(([id, agent]) => ({ value: id, label: `${agent.name} · ${modelLabel(agent.model)}` }));
+  const saved = (overviewRows.agents || []).filter(agent => agent.id && !defaults.some(option => option.value === agent.id)).map(agent => ({ value: agent.id, label: `${agent.name || agent.id} · ${modelLabel(agent.model)}` }));
+  const options = [...defaults, ...saved];
+  if (value && !options.some(option => option.value === value)) options.push({ value, label: value });
+  return options;
+}
+function automationFields(seed = {}) {
+  return [
+    { type: 'note', value: 'Configure the trigger, OpenAI agent, channel and workflow steps. Saving a workflow never sends an external message by itself. Use Run test to generate a safe preview before enabling a real process.' },
+    { key: 'name', label: 'Automation name', value: seed.name || '', placeholder: 'Customer request triage' },
+    { key: 'description', label: 'Purpose', value: seed.description || '', placeholder: 'What outcome should this workflow deliver?' },
+    { key: 'trigger', label: 'Trigger', value: seed.trigger || '', placeholder: 'New customer message, schedule, or CRM change' },
+    { key: 'channel', label: 'Input channel', type: 'select', value: seed.channel || 'dashboard', options: [{ value: 'dashboard', label: 'Dashboard / manual' }, { value: 'chat', label: 'Automa AI Chat' }, { value: 'telegram', label: 'Telegram' }, { value: 'gmail', label: 'Gmail' }, { value: 'automation', label: 'Another automation' }] },
+    { key: 'agentId', label: 'OpenAI agent', type: 'select', value: seed.agentId || 'support-bot-v2-1', options: automationAgentOptions(seed.agentId || 'support-bot-v2-1') },
+    { key: 'integration', label: 'Integration or destination', value: seed.integration || '', placeholder: 'Gmail, Google Calendar, Sheets, CRM...' },
+    { key: 'schedule', label: 'Schedule or timing rule', value: seed.schedule || '', placeholder: 'Event-driven, weekdays at 09:00, or every 30 minutes' },
+    { key: 'steps', label: 'Workflow steps', type: 'textarea', rows: 5, value: seed.steps || '', placeholder: 'Describe what the agent should classify, prepare, log or request for approval.' },
+    { key: 'approvalMode', label: 'Approval mode', type: 'select', value: seed.approvalMode || 'review', options: [{ value: 'review', label: 'Human review before external actions' }, { value: 'automatic', label: 'Automatic after configured checks' }] },
+    { key: 'status', label: 'Status', type: 'select', value: seed.status || 'draft', options: [{ value: 'draft', label: 'Draft — not active' }, { value: 'enabled', label: 'Enabled' }, { value: 'paused', label: 'Paused' }] }
+  ];
+}
+window.openAutomationEditor = function openAutomationEditor(automation = {}, id = null) {
+  const seed = { ...(automation || {}) };
+  return modal(id ? 'Configure Automation' : 'Create Automation', automationFields(seed), async data => {
+    const result = await callBusiness({ action: 'saveEntity', collection: 'automations', ...workspacePayload(), ...(id ? { id } : {}), data: { ...data, ...(seed.blueprint ? { blueprint: seed.blueprint } : {}) } });
+    showCrmNotice('Automation saved', `${data.name} is saved in ${workspace.name}. ${data.status === 'enabled' ? 'It is enabled; run a preview before connecting external actions.' : 'It remains inactive until you enable it.'}`);
+    return result;
+  });
+}
+function openAutomationTest(automation = {}, id) {
+  if (!id) return showCrmNotice('Automation test', 'Save this workflow before running a preview.');
+  return modal(`Run preview · ${automation.name || 'Automation'}`, [{ type: 'note', value: 'This preview uses the selected OpenAI agent and CRM context. It does not send Gmail or Telegram messages, change CRM records, or modify Google Workspace.' }, { key: 'message', label: 'Sample event or request', type: 'textarea', rows: 4, value: 'A customer has sent a new request. Classify it and explain the safest next step.', placeholder: 'Describe the event that should start this workflow.' }], async data => {
+    const result = await callBusiness({ action: 'runAutomation', ...workspacePayload(), automationId: id, message: data.message });
+    showCrmNotice(`${automation.name || 'Automation'} · Preview`, result.reply || 'Preview completed.');
+    await loadAgentMetrics();
+  });
+}
 window.openAutomationPlaybook = function openAutomationPlaybook() {
   const button = document.querySelector('.db-nl[onclick*=playbook]');
   if (typeof window.dbNav === 'function') window.dbNav('playbook', button);
@@ -540,14 +579,34 @@ window.openAutomationPlaybook = function openAutomationPlaybook() {
 window.openAutomationBlueprint = function openAutomationBlueprint(key) {
   const blueprint = AUTOMATION_BLUEPRINTS[key];
   if (!blueprint) return;
-  return modal(`Create ${blueprint.name}`, [
-    { type: 'note', value: `Planning blueprint\n\nPrerequisites: ${blueprint.prerequisites}\n\nMeasure: ${blueprint.metrics}` },
-    { key: 'name', label: 'Automation name', value: blueprint.name },
-    { key: 'trigger', label: 'Trigger', value: blueprint.trigger },
-    { key: 'steps', label: 'Workflow steps', type: 'textarea', rows: 4, value: blueprint.steps },
-    { key: 'status', label: 'Status', type: 'select', value: 'draft', options: [{ value: 'draft', label: 'Draft' }, { value: 'enabled', label: 'Enabled' }] }
-  ], data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection: 'automations', data: { ...data, blueprint: key } }));
+  return modal(`Create ${blueprint.name}`, automationFields({ ...blueprint, blueprint: key, integration: key === 'scheduling' ? 'Google Calendar' : undefined }), async data => {
+    const result = await callBusiness({ action: 'saveEntity', ...workspacePayload(), collection: 'automations', data: { ...data, blueprint: key } });
+    showCrmNotice('Blueprint saved', `${data.name} is ready in Automations. Run a preview before enabling external actions.`);
+    return result;
+  });
 };
+function renderAutomationRows(rows) {
+  const body = document.querySelector('#automationRecords');
+  if (!body) return;
+  const runRows = overviewRows.runs || [];
+  if (!rows.length) {
+    const row = document.createElement('tr'); const cell = document.createElement('td'); cell.colSpan = 5; cell.className = 'crm-empty'; cell.textContent = 'No workflows yet. Choose a blueprint or create a custom automation.'; row.append(cell); body.replaceChildren(row); return;
+  }
+  body.replaceChildren(...rows.map(automation => {
+    const row = document.createElement('tr');
+    const nameCell = document.createElement('td');
+    const name = document.createElement('div'); name.style.fontWeight = '600'; name.textContent = automation.name || 'Untitled workflow';
+    const meta = document.createElement('div'); meta.style.cssText = 'font-size:.75rem;color:var(--tx3)'; meta.textContent = [automation.agentId || 'support-bot-v2-1', automation.channel || 'dashboard', automation.approvalMode === 'automatic' ? 'Automatic checks' : 'Human review'].join(' · ');
+    nameCell.append(name, meta);
+    const trigger = document.createElement('td'); trigger.style.fontSize = '.82rem'; trigger.textContent = automation.trigger || 'Manual test';
+    const runCell = document.createElement('td'); runCell.style.cssText = 'font-weight:600;color:#34d399'; const runCount = Number(automation.runCount) || runRows.filter(run => run.automationId === automation.id).length; runCell.textContent = runCount.toLocaleString();
+    const statusCell = document.createElement('td'); const badge = document.createElement('span'); badge.className = `bst ${automation.status === 'enabled' ? 'son' : automation.status === 'paused' ? 'sid' : 'sbz'}`; badge.textContent = automation.status === 'enabled' ? 'Enabled' : automation.status === 'paused' ? 'Paused' : 'Draft'; statusCell.append(badge);
+    const actions = document.createElement('td'); actions.className = 'd-flex gap-1 flex-wrap';
+    const test = document.createElement('button'); test.className = 'boc btn px-2 py-1'; test.style.cssText = 'font-size:.72rem;border-radius:8px'; test.innerHTML = '<i class="fa-solid fa-play me-1"></i>Run test'; test.onclick = () => openAutomationTest(automation, automation.id);
+    const edit = document.createElement('button'); edit.className = 'bgrd btn px-2 py-1'; edit.style.cssText = 'font-size:.72rem;border-radius:8px'; edit.innerHTML = '<i class="fa-solid fa-pencil me-1"></i>Edit'; edit.onclick = () => openAutomationEditor(automation, automation.id);
+    actions.append(test, edit); row.append(nameCell, trigger, runCell, statusCell, actions); return row;
+  }));
+}
 function crmOptions(rows, value, label) {
   return [{ value: '', label: `No ${label}` }, ...rows.map(row => ({ value: row.id, label: label === 'company' || label === 'opportunity' ? row.name : `${row.firstName || ''} ${row.lastName || ''}`.trim() || 'Unnamed contact' }))].map(option => ({ ...option, selected: option.value === value }));
 }
@@ -973,7 +1032,7 @@ function wireWorkspace() {
   const section = id => document.querySelector(`#sec-${id}`);
   const add = (id, label, fields, collection) => { const btn = [...(section(id)?.querySelectorAll('button') || [])].find(b => b.textContent.includes(label)); btn?.addEventListener('click', () => modal(label, fields, data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection, data }))); };
   const deploy = [...(section('agents')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Deploy New Agent')); deploy?.addEventListener('click', () => openAgentEditor());
-  add('automations', 'Create Automation', [{ key: 'name', label: 'Automation name', placeholder: 'Lead follow-up' }, { key: 'trigger', label: 'Trigger', placeholder: 'New lead' }], 'automations');
+  section('automations')?.querySelector('[data-create-automation]')?.addEventListener('click', () => window.openAutomationEditor());
   document.querySelectorAll('[data-use-blueprint]').forEach(button => button.addEventListener('click', () => window.openAutomationBlueprint(button.dataset.useBlueprint)));
   document.querySelectorAll('[data-crm-action]').forEach(button => button.addEventListener('click', () => openCrmEditor({ company: 'companies', contact: 'contacts', opportunity: 'opportunities', activity: 'activities', contract: 'contracts', service: 'services' }[button.dataset.crmAction])));
   document.querySelectorAll('[data-crm-ai]').forEach(button => button.addEventListener('click', () => runCrmAssist(button.dataset.crmAi)));

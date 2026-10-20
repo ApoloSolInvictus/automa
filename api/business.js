@@ -527,7 +527,7 @@ export default async function handler(req, res) {
     const root = cmd.orgId ? db.collection('organizations').doc(cmd.orgId) : db.collection('users').doc(user.uid);
     const membership = cmd.orgId ? await organizationAccess(db, cmd.orgId, user.uid) : null;
     if (cmd.orgId && !membership) return res.status(403).json({ error: 'You are not a member of this organization.', code: 'organization_forbidden' });
-    if (cmd.orgId && membership.role === 'viewer' && ['saveEntity', 'saveSettings', 'updateTask', 'createLead'].includes(cmd.action)) return res.status(403).json({ error: 'Viewer members have read-only access.', code: 'organization_read_only' });
+    if (cmd.orgId && membership.role === 'viewer' && ['saveEntity', 'saveSettings', 'updateTask', 'createLead', 'runAutomation'].includes(cmd.action)) return res.status(403).json({ error: 'Viewer members have read-only access.', code: 'organization_read_only' });
     if (cmd.action === 'agentMetrics') {
       const metrics = await loadAgentMetrics(root, cmd.days);
       if (cmd.agentId) metrics.agents = metrics.agents.filter(agent => agent.id === cmd.agentId);
@@ -559,6 +559,46 @@ export default async function handler(req, res) {
         transaction.set(ref, payload, { merge: true });
       });
       return res.status(200).json({ ok: true, id: ref.id });
+    }
+    if (cmd.action === 'runAutomation') {
+      const automationRef = root.collection('automations').doc(cmd.automationId);
+      const automationSnapshot = await automationRef.get();
+      if (!automationSnapshot.exists) return res.status(404).json({ error: 'Automation not found.', code: 'automation_not_found' });
+      const automation = automationSnapshot.data() || {};
+      if (automation.status === 'paused') return res.status(409).json({ error: 'This automation is paused. Enable it before running a preview.', code: 'automation_paused' });
+      const requestedAgentId = typeof automation.agentId === 'string' && automation.agentId ? automation.agentId : 'support-bot-v2-1';
+      const agentSnapshot = await root.collection('agents').doc(requestedAgentId).get();
+      const savedAgent = agentSnapshot.exists ? agentSnapshot.data() : null;
+      const agent = { ...(getDefaultAgent(requestedAgentId) || getDefaultAgent('support-bot-v2-1')), ...(savedAgent || {}) };
+      if (agent.status === 'paused') return res.status(409).json({ error: 'The selected automation agent is paused. Enable it before running a preview.', code: 'automation_agent_paused' });
+      const model = agent.model || DEFAULT_OPENAI_MODEL;
+      if (!isAllowedOpenAIModel(model)) return res.status(400).json({ error: 'The selected automation agent has an unsupported OpenAI model.', code: 'automation_agent_model_invalid' });
+      const crm = await loadCrmAgentContext(root);
+      const workflow = {
+        name: automation.name || cmd.automationId,
+        trigger: automation.trigger || '',
+        channel: automation.channel || 'automation',
+        schedule: automation.schedule || '',
+        steps: automation.steps || '',
+        approvalMode: automation.approvalMode || 'review'
+      };
+      const instructions = [
+        `You are previewing the Automa workflow "${workflow.name}" using the ${agent.name || 'Automa'} agent.`,
+        agent.description ? `Business area: ${agent.description}.` : '',
+        agent.instructions || '',
+        'This is a safe preview. Do not send email, modify CRM records, call external integrations, or claim that an action was completed.',
+        'Explain the classification, the planned steps, missing information and the next human approval point. Ground the response in the user message, workflow configuration and CRM snapshot only.',
+        `<workflow>${JSON.stringify(workflow)}</workflow>`,
+        `<crm_context>${JSON.stringify(crm.data)}</crm_context>`
+      ].filter(Boolean).join(' ');
+      const startedAt = Date.now();
+      const result = await requestOpenAI({ message: cmd.message, history: [] }, { model, instructions });
+      const completed = result.status === 200;
+      const stamp = FieldValue.serverTimestamp();
+      await automationRef.set({ runCount: FieldValue.increment(1), lastRunAt: stamp, lastRunStatus: completed ? 'completed' : 'failed', updatedAt: stamp }, { merge: true });
+      await root.collection('runs').add({ type: 'automation_run', automationId: cmd.automationId, automationName: workflow.name, status: completed ? 'completed' : 'failed', success: completed, message: completed ? 'Workflow preview completed' : 'Workflow preview failed', createdAt: stamp });
+      await recordAgentRun(root, FieldValue, { agentId: requestedAgentId, channel: 'automation', actorKey: `user:${user.uid}`, model, status: completed ? 'completed' : 'failed', success: completed, latencyMs: Date.now() - startedAt, inputChars: cmd.message.length, outputChars: typeof result.body?.reply === 'string' ? result.body.reply.length : 0, crmRecordCount: crm.count, errorCode: result.body?.code }).catch(error => console.warn('Automation metric could not be recorded', { code: error?.code || 'metrics_write_failed' }));
+      return res.status(result.status).json({ ...result.body, ok: completed, automationId: cmd.automationId, automation: workflow.name, preview: true, agent: agent.name || 'Automa' });
     }
     if (cmd.action === 'runAgent') {
       const ref = root.collection('agents').doc(cmd.agentId);
