@@ -284,7 +284,6 @@
                         <span class="ftag">Vercel webhooks</span>
                      </div>
                   </div>
-               </div>
             </div>
          </section>
          <!-- HOW IT WORKS -->
@@ -808,7 +807,7 @@
                   <div class="d-flex align-items-center justify-content-between mb-4">
                      <div>
                         <h4 class="fw-700 mb-1" style="font-size:1.4rem;font-weight:700">Welcome, <span id="greetName">User</span></h4>
-                        <p style="font-size:.875rem;color:var(--tx3);margin:0">Here is what your Automa agents and business workflows are doing today.</p>
+                         <p style="font-size:.875rem;color:var(--tx3);margin:0">A live view of this workspace. Values appear as your CRM, agents, channels and workflows create activity.</p>
                      </div>
                      <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
                         <button class="boc btn px-3 py-2" data-demo-create disabled onclick="createDemoData()" style="font-size:.8rem;white-space:nowrap" title="Add reversible sample data to the current workspace"><i class="fa-solid fa-wand-magic-sparkles me-1"></i>Crear Demo</button>
@@ -823,40 +822,40 @@
                         <div class="db-stat-card">
                            <div class="d-flex justify-content-between align-items-start mb-3">
                               <div style="width:38px;height:38px;border-radius:11px;background:rgba(139,92,246,.15);display:flex;align-items:center;justify-content:center"><i class="fa-regular fa-comments" style="color:#a78bfa"></i></div>
-                              <span style="font-size:.72rem;font-weight:600;padding:3px 9px;border-radius:100px;background:rgba(52,211,153,.1);color:#34d399">Today</span>
+                               <span data-overview-badge style="font-size:.72rem;font-weight:600;padding:3px 9px;border-radius:100px;background:rgba(52,211,153,.1);color:#34d399">30 days</span>
                            </div>
-                           <div class="db-stat-val gt">24.8K</div>
-                           <div class="db-stat-lbl">Customer Conversations</div>
+                            <div data-overview-value class="db-stat-val gt">—</div>
+                            <div data-overview-label class="db-stat-lbl">Agent Interactions</div>
                         </div>
                      </div>
                      <div class="col-6 col-xl-3">
                         <div class="db-stat-card">
                            <div class="d-flex justify-content-between align-items-start mb-3">
                               <div style="width:38px;height:38px;border-radius:11px;background:rgba(52,211,153,.12);display:flex;align-items:center;justify-content:center"><i class="fa-solid fa-bullseye" style="color:#34d399"></i></div>
-                              <span style="font-size:.72rem;font-weight:600;padding:3px 9px;border-radius:100px;background:rgba(52,211,153,.1);color:#34d399">Today</span>
+                               <span data-overview-badge style="font-size:.72rem;font-weight:600;padding:3px 9px;border-radius:100px;background:rgba(52,211,153,.1);color:#34d399">Live</span>
                            </div>
-                           <div class="db-stat-val" style="color:#34d399">98.2%</div>
-                           <div class="db-stat-lbl">Requests Completed</div>
+                            <div data-overview-value class="db-stat-val" style="color:#34d399">—</div>
+                            <div data-overview-label class="db-stat-lbl">Successful Completion</div>
                         </div>
                      </div>
                      <div class="col-6 col-xl-3">
                         <div class="db-stat-card">
                            <div class="d-flex justify-content-between align-items-start mb-3">
                               <div style="width:38px;height:38px;border-radius:11px;background:rgba(59,130,246,.12);display:flex;align-items:center;justify-content:center"><i class="fa-regular fa-clock" style="color:#60a5fa"></i></div>
-                              <span style="font-size:.72rem;font-weight:600;padding:3px 9px;border-radius:100px;background:rgba(59,130,246,.1);color:#60a5fa">Live</span>
+                               <span data-overview-badge style="font-size:.72rem;font-weight:600;padding:3px 9px;border-radius:100px;background:rgba(59,130,246,.1);color:#60a5fa">Live</span>
                            </div>
-                           <div class="db-stat-val" style="color:#60a5fa">1.4s</div>
-                           <div class="db-stat-lbl">Avg Response Time</div>
+                            <div data-overview-value class="db-stat-val" style="color:#60a5fa">—</div>
+                            <div data-overview-label class="db-stat-lbl">Avg Agent Response</div>
                         </div>
                      </div>
                      <div class="col-6 col-xl-3">
                         <div class="db-stat-card">
                            <div class="d-flex justify-content-between align-items-start mb-3">
                               <div style="width:38px;height:38px;border-radius:11px;background:rgba(245,158,11,.1);display:flex;align-items:center;justify-content:center"><i class="fa-solid fa-coins" style="color:#fbbf24"></i></div>
-                              <span style="font-size:.72rem;font-weight:600;padding:3px 9px;border-radius:100px;background:rgba(245,158,11,.1);color:#fbbf24">Tracked</span>
+                               <span data-overview-badge style="font-size:.72rem;font-weight:600;padding:3px 9px;border-radius:100px;background:rgba(245,158,11,.1);color:#fbbf24">CRM</span>
                            </div>
-                           <div class="db-stat-val" style="color:#fbbf24">$18.2K</div>
-                           <div class="db-stat-lbl">Workflow Value</div>
+                            <div data-overview-value class="db-stat-val" style="color:#fbbf24">—</div>
+                            <div data-overview-label class="db-stat-lbl">CRM Pipeline Value</div>
                         </div>
                      </div>
                   </div>
@@ -865,8 +864,8 @@
                      <div class="col-lg-8">
                         <div style="background:var(--sf);border:1px solid var(--bd);border-radius:18px;padding:24px">
                            <div class="d-flex align-items-center justify-content-between mb-3">
-                              <div style="font-weight:600"><i class="fa-solid fa-chart-area me-2" style="color:var(--pur)"></i>Conversation Volume</div>
-                              <div style="font-size:.75rem;color:var(--tx3)">Last 30 days</div>
+                              <div style="font-weight:600"><i class="fa-solid fa-chart-area me-2" style="color:var(--pur)"></i>Agent Interaction Volume</div>
+                               <div data-overview-chart-status style="font-size:.75rem;color:var(--tx3)">Waiting for workspace activity</div>
                            </div>
                            <canvas id="ovChart" height="100"></canvas>
                         </div>
@@ -877,11 +876,26 @@
                               <div style="font-weight:600;font-size:.9rem">Live Activity</div>
                               <div class="d-flex align-items-center gap-2"><span style="width:7px;height:7px;border-radius:50%;background:#34d399;animation:bpls 1.5s infinite"></span><span style="font-size:.72rem;color:#34d399;font-weight:600">Live</span></div>
                            </div>
-                           <div id="liveActivity" style="display:flex;flex-direction:column;gap:8px">
-                              <div style="display:flex;gap:10px;padding:10px;background:var(--bg3);border-radius:10px;font-size:.78rem"><span style="width:7px;height:7px;border-radius:50%;background:#34d399;margin-top:4px;flex-shrink:0"></span><span style="color:var(--tx2)">Customer question answered by the support agent</span><span style="margin-left:auto;color:var(--tx3);white-space:nowrap">2s ago</span></div>
-                              <div style="display:flex;gap:10px;padding:10px;background:var(--bg3);border-radius:10px;font-size:.78rem"><span style="width:7px;height:7px;border-radius:50%;background:#8b5cf6;margin-top:4px;flex-shrink:0"></span><span style="color:var(--tx2)">Contract intake details organized for review</span><span style="margin-left:auto;color:var(--tx3);white-space:nowrap">18s ago</span></div>
-                              <div style="display:flex;gap:10px;padding:10px;background:var(--bg3);border-radius:10px;font-size:.78rem"><span style="width:7px;height:7px;border-radius:50%;background:#34d399;margin-top:4px;flex-shrink:0"></span><span style="color:var(--tx2)">Customer record updated with the latest context</span><span style="margin-left:auto;color:var(--tx3);white-space:nowrap">45s ago</span></div>
-                              <div style="display:flex;gap:10px;padding:10px;background:var(--bg3);border-radius:10px;font-size:.78rem"><span style="width:7px;height:7px;border-radius:50%;background:#fbbf24;margin-top:4px;flex-shrink:0"></span><span style="color:var(--tx2)">Complex request escalated to a team member</span><span style="margin-left:auto;color:var(--tx3);white-space:nowrap">1m ago</span></div>
+                            <div id="liveActivity" style="display:flex;flex-direction:column;gap:8px"><div class="crm-empty">No activity recorded for this workspace yet.</div></div>
+                        </div>
+                     </div>
+                  </div>
+                  <div class="row g-3 mt-1">
+                     <div class="col-lg-5">
+                        <div class="crm-panel h-100" id="overviewChannels">
+                           <div class="d-flex align-items-center justify-content-between mb-3"><div><div class="crm-panel-title"><i class="fa-solid fa-diagram-project me-2" style="color:#34d399"></i>Activity by channel</div><div class="crm-panel-subtitle">Real agent interactions in the selected workspace.</div></div><span class="bst sid" data-overview-period>30 days</span></div>
+                           <div data-overview-channel-list><div class="crm-empty">No channel activity yet.</div></div>
+                        </div>
+                     </div>
+                     <div class="col-lg-7">
+                        <div class="crm-panel h-100" id="overviewSnapshot">
+                           <div class="crm-panel-title mb-1"><i class="fa-solid fa-layer-group me-2" style="color:#60a5fa"></i>Workspace snapshot</div>
+                           <div class="crm-panel-subtitle mb-3">A live summary of the records and connections available to Automa.</div>
+                           <div class="row g-2" data-overview-snapshot-list>
+                              <div class="col-6 col-md-3"><div class="crm-mini-stat" style="background:var(--bg3);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:3px"><strong data-overview-snapshot="crm" style="font-size:1.15rem">—</strong><span style="font-size:.72rem;color:var(--tx3)">CRM records</span></div></div>
+                              <div class="col-6 col-md-3"><div class="crm-mini-stat" style="background:var(--bg3);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:3px"><strong data-overview-snapshot="automations" style="font-size:1.15rem">—</strong><span style="font-size:.72rem;color:var(--tx3)">Automations</span></div></div>
+                              <div class="col-6 col-md-3"><div class="crm-mini-stat" style="background:var(--bg3);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:3px"><strong data-overview-snapshot="integrations" style="font-size:1.15rem">—</strong><span style="font-size:.72rem;color:var(--tx3)">Connections</span></div></div>
+                              <div class="col-6 col-md-3"><div class="crm-mini-stat" style="background:var(--bg3);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:3px"><strong data-overview-snapshot="users" style="font-size:1.15rem">—</strong><span style="font-size:.72rem;color:var(--tx3)">Active users</span></div></div>
                            </div>
                         </div>
                      </div>

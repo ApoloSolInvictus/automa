@@ -16,6 +16,7 @@ const config = {
 };
 let auth, db, stops = [], chat = [], generation = 0, chatPending = false, workspaceWired = false, telegramIntegration = {}, gmailIntegration = {}, googleWorkspaceStatus = {}, agentMetrics = null, agentMetricsTimer = null;
 const crmState = { companies: [], contacts: [], opportunities: [], activities: [], contracts: [], services: [] };
+const overviewRows = Object.create(null);
 const DEFAULT_WORKSPACE_COLOR = '#0b2a4a';
 const INTEGRATION_CATALOG = Object.freeze({
   discord: { label: 'Discord', scope: 'Messages and escalation routing' },
@@ -98,24 +99,107 @@ window.sendChat = async function sendChat() {
   finally { chatPending = false; if (sendButton) sendButton.disabled = false; if (typing) window.removeTyping?.(typing); input?.focus(); }
 };
 
+function overviewTimestamp(row) {
+  const value = row?.createdAt ?? row?.updatedAt ?? row?.timestamp ?? row?.occurredAt;
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof value.toDate === 'function') return value.toDate().getTime();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'object' && Number.isFinite(Number(value.seconds))) return Number(value.seconds) * 1000;
+  if (typeof value === 'number') return value < 1e12 ? value * 1000 : value;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+function overviewTimeLabel(timestamp) {
+  if (!timestamp) return 'No timestamp';
+  const elapsed = Math.max(0, Date.now() - timestamp);
+  if (elapsed < 60_000) return 'just now';
+  if (elapsed < 3_600_000) return `${Math.max(1, Math.round(elapsed / 60_000))}m ago`;
+  if (elapsed < 86_400_000) return `${Math.max(1, Math.round(elapsed / 3_600_000))}h ago`;
+  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+function overviewChannelLabel(channel) {
+  const labels = { chat: 'AI Chat', telegram: 'Telegram', gmail: 'Gmail', dashboard: 'Dashboard', automation: 'Automations', api: 'API' };
+  const value = String(channel || 'other').toLowerCase();
+  return labels[value] || value.replace(/[-_]+/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
+function overviewCollectionLabel(collection) {
+  const labels = { runs: 'Workflow', leads: 'Lead', tasks: 'Task', opportunities: 'Opportunity', activities: 'Activity', contracts: 'Contract', services: 'Service', companies: 'Company', contacts: 'Contact', agents: 'Agent', automations: 'Automation', integrations: 'Integration' };
+  return labels[collection] || 'Workspace record';
+}
+function renderOverviewChannelList(channels) {
+  const list = document.querySelector('[data-overview-channel-list]');
+  if (!list) return;
+  const entries = Object.entries(channels || {}).filter(([, count]) => Number(count) > 0).sort((a, b) => Number(b[1]) - Number(a[1]));
+  if (!entries.length) { list.replaceChildren(Object.assign(document.createElement('div'), { className: 'crm-empty', textContent: 'No channel activity yet.' })); return; }
+  const max = Math.max(...entries.map(([, count]) => Number(count)));
+  list.replaceChildren(...entries.slice(0, 8).map(([channel, count]) => {
+    const item = document.createElement('div'); item.style.cssText = 'padding:9px 0;border-bottom:1px solid var(--bd)';
+    const head = document.createElement('div'); head.style.cssText = 'display:flex;justify-content:space-between;gap:12px;font-size:.78rem;margin-bottom:6px';
+    const label = document.createElement('span'); label.style.color = 'var(--tx2)'; label.textContent = overviewChannelLabel(channel);
+    const value = document.createElement('strong'); value.textContent = Number(count).toLocaleString(); head.append(label, value);
+    const track = document.createElement('div'); track.style.cssText = 'height:5px;border-radius:99px;background:var(--bg3);overflow:hidden';
+    const fill = document.createElement('div'); fill.style.cssText = `height:100%;width:${Math.max(5, Math.round((Number(count) / max) * 100))}%;background:var(--grad);border-radius:99px;transition:width .3s`; track.append(fill);
+    item.append(head, track); return item;
+  }));
+}
+function renderOverviewSnapshot() {
+  const crmCount = Object.values(crmState).reduce((total, rows) => total + rows.length, 0);
+  const values = {
+    crm: crmCount,
+    automations: (overviewRows.automations || []).length,
+    integrations: (overviewRows.integrations || []).length,
+    users: Number(agentMetrics?.summary?.activeUsers) || 0
+  };
+  Object.entries(values).forEach(([key, value]) => {
+    const target = document.querySelector(`[data-overview-snapshot="${key}"]`);
+    if (target) target.textContent = value || key === 'users' && !agentMetrics ? '—' : value.toLocaleString();
+  });
+}
+function renderOverviewStats() {
+  const values = document.querySelectorAll('#sec-overview [data-overview-value]');
+  const labels = document.querySelectorAll('#sec-overview [data-overview-label]');
+  const summary = agentMetrics?.summary || {};
+  const total = Number(summary.totalRequests) || 0;
+  const successRate = Number(summary.successRate);
+  const latency = Number(summary.averageLatencyMs);
+  const hasCrm = Number(summary.crmRecordCount) > 0 || Number(summary.pipelineValue) > 0 || Object.values(crmState).some(rows => rows.length);
+  if (values[0]) values[0].textContent = total ? total.toLocaleString() : '—';
+  if (values[1]) values[1].textContent = total && Number.isFinite(successRate) ? `${successRate.toLocaleString(undefined, { maximumFractionDigits: 1 })}%` : '—';
+  if (values[2]) values[2].textContent = total && Number.isFinite(latency) ? `${(latency / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}s` : '—';
+  if (values[3]) values[3].textContent = hasCrm ? `$${(Number(summary.pipelineValue) || 0).toLocaleString()}` : '—';
+  ['Agent Interactions', 'Successful Completion', 'Avg Agent Response', 'CRM Pipeline Value'].forEach((label, index) => { if (labels[index]) labels[index].textContent = label; });
+  const status = document.querySelector('[data-overview-chart-status]');
+  if (status) status.textContent = total ? `${total.toLocaleString()} interactions · ${metricDisplay(summary.activeUsers)} active users` : 'No recorded agent activity yet';
+  const period = document.querySelector('[data-overview-period]');
+  if (period) period.textContent = `${agentMetrics?.periodDays || 30} days`;
+  renderOverviewChannelList(summary.channels);
+  renderOverviewSnapshot();
+  window.updateOverviewChart?.(agentMetrics?.daily || []);
+}
 function updateStats(name, rows) {
-  const values = document.querySelectorAll('#sec-overview .db-stat-val'), labels = document.querySelectorAll('#sec-overview .db-stat-lbl');
-  if (name === 'leads' && values[0]) { values[0].textContent = rows.length.toLocaleString(); labels[0].textContent = 'Prospects'; }
-  if (name === 'tasks' && values[1]) { values[1].textContent = rows.filter(row => row.status === 'pending').length.toLocaleString(); labels[1].textContent = 'Pending Follow-ups'; }
-  if (name === 'leads' && values[2]) { values[2].textContent = `$${rows.reduce((sum, row) => sum + (Number(row.value) || 0), 0).toLocaleString()}`; labels[2].textContent = 'Pipeline Value'; }
-  if (name === 'runs' && values[3]) { values[3].textContent = rows.length.toLocaleString(); labels[3].textContent = 'Automation Runs'; }
+  overviewRows[name] = rows;
+  renderOverviewStats();
 }
 function resetStats() {
-  const values = document.querySelectorAll('#sec-overview .db-stat-val'), labels = document.querySelectorAll('#sec-overview .db-stat-lbl');
-  ['Prospects', 'Pending Follow-ups', 'Pipeline Value', 'Automation Runs'].forEach((label, index) => { if (values[index]) values[index].textContent = '—'; if (labels[index]) labels[index].textContent = label; });
+  Object.keys(overviewRows).forEach(name => delete overviewRows[name]);
+  agentMetrics = null;
+  renderOverviewStats();
+  const target = $('liveActivity');
+  if (target) target.replaceChildren(Object.assign(document.createElement('div'), { className: 'crm-empty', textContent: 'No activity recorded for this workspace yet.' }));
 }
-function renderActivity(rows) {
+function renderActivity() {
   const target = $('liveActivity'); if (!target) return;
-  target.replaceChildren(...rows.slice(0, 4).map(row => {
+  const included = ['runs', 'leads', 'tasks', 'opportunities', 'activities', 'contracts', 'services', 'companies', 'contacts'];
+  const rows = included.flatMap(collection => (overviewRows[collection] || []).map(row => ({ ...row, __collection: collection }))).sort((a, b) => overviewTimestamp(b) - overviewTimestamp(a)).slice(0, 5);
+  if (!rows.length) { target.replaceChildren(Object.assign(document.createElement('div'), { className: 'crm-empty', textContent: 'No activity recorded for this workspace yet.' })); return; }
+  target.replaceChildren(...rows.map(row => {
     const item = document.createElement('div'); item.style.cssText = 'display:flex;gap:10px;padding:10px;background:var(--bg3);border-radius:10px;font-size:.78rem';
-    const dot = document.createElement('span'); dot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:#34d399;margin-top:4px;flex-shrink:0';
-    const text = document.createElement('span'); text.style.color = 'var(--tx2)'; text.textContent = row.message || row.title || 'Automation updated';
-    const time = document.createElement('span'); time.style.cssText = 'margin-left:auto;color:var(--tx3);white-space:nowrap'; time.textContent = 'recently'; item.append(dot, text, time); return item;
+    const dot = document.createElement('span'); dot.style.cssText = `width:7px;height:7px;border-radius:50%;background:${row.__collection === 'runs' ? '#a78bfa' : row.__collection === 'opportunities' ? '#60a5fa' : '#34d399'};margin-top:4px;flex-shrink:0`;
+    const text = document.createElement('span'); text.style.cssText = 'color:var(--tx2);min-width:0';
+    const title = row.message || row.title || row.subject || row.name || row.workflow || `${overviewCollectionLabel(row.__collection)} updated`;
+    text.textContent = row.type === 'agent_run' ? `${row.agentName || row.agentId || 'Agent'} completed a ${overviewChannelLabel(row.channel)} interaction` : `${overviewCollectionLabel(row.__collection)}: ${title}`;
+    const time = document.createElement('span'); time.style.cssText = 'margin-left:auto;color:var(--tx3);white-space:nowrap'; time.textContent = overviewTimeLabel(overviewTimestamp(row)); item.append(dot, text, time); return item;
   }));
 }
 function renderEntities(sectionId, rows) {
@@ -239,6 +323,7 @@ function renderCrm() {
 function resetCrmState() {
   Object.keys(crmState).forEach(key => { crmState[key] = []; });
   renderCrm();
+  renderOverviewStats();
 }
 function workspacePayload() { return workspace.id ? { orgId: workspace.id } : {}; }
 async function callBusiness(body) {
@@ -278,6 +363,7 @@ function renderAgentMetrics(metrics) {
       if (fill) fill.style.width = `${Math.min(100, Math.max(0, metric.successRate))}%`;
     });
   }
+  renderOverviewStats();
 }
 async function loadAgentMetrics() {
   if (!currentUser) return;
@@ -993,9 +1079,9 @@ function subscribe(user) {
     const stop = onSnapshot(sourceQuery, snap => { if (generation !== run) return; const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); updateStats(name, rows); callback(rows); }, error => { if (generation === run) console.warn(`${name} unavailable`, error.code); });
     stops.push(stop);
   };
-  watch('leads', rows => renderActivity(rows)); watch('tasks', rows => renderActivity(rows)); watch('runs', rows => { renderActivity(rows); scheduleAgentMetricsRefresh(); });
+  watch('leads', () => renderActivity()); watch('tasks', () => renderActivity()); watch('runs', () => { renderActivity(); scheduleAgentMetricsRefresh(); });
   watch('agents', rows => renderEntities('agents', rows)); watch('automations', rows => renderEntities('automations', rows)); watch('integrations', rows => renderEntities('integrations', rows));
-  watch('companies', rows => { crmState.companies = rows; renderCrm(); }); watch('contacts', rows => { crmState.contacts = rows; renderCrm(); }); watch('opportunities', rows => { crmState.opportunities = rows; renderCrm(); }); watch('activities', rows => { crmState.activities = rows; renderCrm(); }); watch('contracts', rows => { crmState.contracts = rows; renderCrm(); }); watch('services', rows => { crmState.services = rows; renderCrm(); });
+  watch('companies', rows => { crmState.companies = rows; renderCrm(); renderActivity(); renderOverviewStats(); }); watch('contacts', rows => { crmState.contacts = rows; renderCrm(); renderActivity(); renderOverviewStats(); }); watch('opportunities', rows => { crmState.opportunities = rows; renderCrm(); renderActivity(); renderOverviewStats(); }); watch('activities', rows => { crmState.activities = rows; renderCrm(); renderActivity(); renderOverviewStats(); }); watch('contracts', rows => { crmState.contracts = rows; renderCrm(); renderActivity(); renderOverviewStats(); }); watch('services', rows => { crmState.services = rows; renderCrm(); renderActivity(); renderOverviewStats(); });
   wireWorkspace();
 }
 

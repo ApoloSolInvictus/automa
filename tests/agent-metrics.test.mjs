@@ -16,4 +16,6 @@ test('aggregates agent runs by agent, channel and anonymized user', () => {
   assert.equal(result.summary.totalRequests, 3);
   assert.equal(result.summary.successRate, 66.7);
   assert.equal(result.summary.activeUsers, 2);
+  assert.deepEqual(result.summary.channels, { chat: 1, telegram: 1, dashboard: 1 });
+  assert.equal(result.daily.reduce((sum, day) => sum + day.requests, 0), 3);
 });

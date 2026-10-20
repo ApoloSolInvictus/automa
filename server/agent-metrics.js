@@ -64,6 +64,8 @@ export function aggregateAgentRuns(rows = [], savedAgents = [], now = Date.now()
   let totalLatency = 0;
   let totalCrmActions = 0;
   let totalCrmRecords = 0;
+  const channelCounts = {};
+  const dailyCounts = new Map();
   for (const run of runs) {
     const metric = byAgent.get(run.agentId) || (() => {
       const item = { id: run.agentId || 'automa-assistant', name: run.agentId || 'Automa Assistant', model: run.model || '', status: 'enabled', requestCount: 0, successCount: 0, successRate: 0, avgLatencyMs: 0, lastRunAt: null, channels: {} };
@@ -83,7 +85,15 @@ export function aggregateAgentRuns(rows = [], savedAgents = [], now = Date.now()
     totalCrmRecords += number(run.crmRecordCount);
     const channel = CHANNELS.has(run.channel) ? run.channel : 'automation';
     metric.channels[channel] = (metric.channels[channel] || 0) + 1;
+    channelCounts[channel] = (channelCounts[channel] || 0) + 1;
     const when = timestampMs(run.createdAt);
+    if (when) {
+      const day = new Date(when).toISOString().slice(0, 10);
+      const daily = dailyCounts.get(day) || { requests: 0, successes: 0 };
+      daily.requests += 1;
+      if (run.success === true || run.status === 'completed') daily.successes += 1;
+      dailyCounts.set(day, daily);
+    }
     if (when && (!metric.lastRunAt || when > Date.parse(metric.lastRunAt))) metric.lastRunAt = new Date(when).toISOString();
   }
   for (const metric of metrics) {
@@ -93,15 +103,23 @@ export function aggregateAgentRuns(rows = [], savedAgents = [], now = Date.now()
   }
   const pipelineValue = number(rows.filter(row => row?.type !== 'agent_run').reduce((sum, row) => sum + number(row?.pipelineValue), 0));
   const totalRequests = runs.length;
+  const daily = Array.from({ length: Math.max(1, periodDays) }, (_, index) => {
+    const date = new Date(now - (Math.max(1, periodDays) - index - 1) * 24 * 60 * 60 * 1000);
+    const key = date.toISOString().slice(0, 10);
+    const value = dailyCounts.get(key) || { requests: 0, successes: 0 };
+    return { date: key, label: `${date.getUTCMonth() + 1}/${date.getUTCDate()}`, ...value };
+  });
   return {
     periodDays: Math.max(1, periodDays),
     agents: metrics,
+    daily,
     summary: {
       totalRequests,
       successfulRequests: totalSuccess,
       successRate: totalRequests ? Math.round((totalSuccess / totalRequests) * 1000) / 10 : 0,
       activeUsers: actors.size,
       users: [...userStats.values()].sort((a, b) => b.requests - a.requests).map((user, index) => ({ id: `user-${index + 1}`, requestCount: user.requests, successRate: user.requests ? Math.round((user.successes / user.requests) * 1000) / 10 : 0 })),
+      channels: channelCounts,
       averageLatencyMs: totalRequests ? Math.round(totalLatency / totalRequests) : 0,
       crmActionCount: totalCrmActions,
       crmRecordCount: totalCrmRecords,

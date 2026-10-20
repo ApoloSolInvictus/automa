@@ -193,7 +193,7 @@ function dbNav(section, btn) {
     if (ch) ch.style.transform = 'rotate(0deg)';
     // init charts when relevant section shown
     if (section === 'analytics') setTimeout(initAnalyticsChart, 100);
-    if (section === 'overview') setTimeout(initOverviewChart, 100);
+    if (section === 'overview') setTimeout(() => { if (!ovChartInst) initOverviewChart(); }, 100);
 }
 
 /*  CHARTS  */
@@ -207,7 +207,7 @@ function chartColors() {
     };
 }
 
-function initOverviewChart() {
+function initOverviewChart(series = []) {
     const ctx = document.getElementById('ovChart');
     if (!ctx) return;
     if (ovChartInst) {
@@ -218,10 +218,9 @@ function initOverviewChart() {
     const g = c.createLinearGradient(0, 0, 0, 280);
     g.addColorStop(0, 'rgba(139,92,246,0.35)');
     g.addColorStop(1, 'rgba(59,130,246,0.02)');
-    const labels = Array.from({
-        length: 30
-    }, (_, i) => `${i+1}`);
-    const data = [420, 480, 510, 440, 600, 580, 720, 690, 750, 810, 780, 860, 820, 900, 940, 880, 960, 1020, 1100, 1080, 1150, 1200, 1180, 1260, 1310, 1280, 1350, 1400, 1460, 1520];
+    const points = Array.isArray(series) && series.length ? series : Array.from({ length: 30 }, (_, i) => ({ label: `${i + 1}`, requests: 0 }));
+    const labels = points.map(point => point.label || '');
+    const data = points.map(point => Number(point.requests) || 0);
     const {
         grid,
         ticks
@@ -231,7 +230,7 @@ function initOverviewChart() {
         data: {
             labels,
             datasets: [{
-                label: 'Conversations',
+                label: 'Agent interactions',
                 data,
                 fill: true,
                 backgroundColor: g,
@@ -256,7 +255,7 @@ function initOverviewChart() {
                     borderWidth: 1,
                     padding: 10,
                     callbacks: {
-                        label: c => ' ' + c.parsed.y.toLocaleString() + ' conversations'
+                        label: c => ' ' + c.parsed.y.toLocaleString() + ' interactions'
                     }
                 }
             },
@@ -291,6 +290,16 @@ function initOverviewChart() {
         }
     });
 }
+
+window.updateOverviewChart = function updateOverviewChart(series = []) {
+    const ctx = document.getElementById('ovChart');
+    if (!ctx) return;
+    if (!ovChartInst) return initOverviewChart(series);
+    const points = Array.isArray(series) && series.length ? series : Array.from({ length: 30 }, (_, i) => ({ label: `${i + 1}`, requests: 0 }));
+    ovChartInst.data.labels = points.map(point => point.label || '');
+    ovChartInst.data.datasets[0].data = points.map(point => Number(point.requests) || 0);
+    ovChartInst.update('none');
+};
 
 function initAnalyticsChart() {
     const ctx = document.getElementById('anChart');
@@ -514,27 +523,4 @@ document.addEventListener('click', (e) => {
     }
 });
 
-/*  LIVE ACTIVITY TICKER  */
-const activities = [
-    ['#34d399', 'Customer question answered by the support agent'],
-    ['#8b5cf6', 'Contract follow-up prepared for team review'],
-    ['#34d399', 'Customer record updated with approved context'],
-    ['#fbbf24', 'Complex request escalated to a human agent'],
-    ['#60a5fa', 'Customer and contract data sync completed'],
-    ['#34d399', 'Automa prepared an onboarding checklist'],
-    ['#8b5cf6', 'Workflow performance report generated'],
-    ['#34d399', 'Customer support queue reviewed by Automa'],
-];
-let actIdx = 0;
-setInterval(() => {
-    const box = document.getElementById('liveActivity');
-    if (!box || !document.getElementById('sec-overview').classList.contains('active')) return;
-    const [color, text] = activities[actIdx % activities.length];
-    actIdx++;
-    const times = ['just now', '2s ago', '5s ago', '12s ago'];
-    const item = document.createElement('div');
-    item.style.cssText = 'display:flex;gap:10px;padding:10px;background:var(--bg3);border-radius:10px;font-size:.78rem;animation:fadeIn .4s ease';
-    item.innerHTML = `<span style="width:7px;height:7px;border-radius:50%;background:${color};margin-top:4px;flex-shrink:0"></span><span style="color:var(--tx2)">${text}</span><span style="margin-left:auto;color:var(--tx3);white-space:nowrap">${times[0]}</span>`;
-    box.insertBefore(item, box.firstChild);
-    if (box.children.length > 5) box.removeChild(box.lastChild);
-}, 5000);
+/* Live activity is rendered from the authenticated workspace state by template-app.js. */
