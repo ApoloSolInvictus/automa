@@ -203,6 +203,14 @@ export function parseCommand(body) {
     const orgId = body.orgId == null ? null : organizationId(body.orgId);
     return { action: body.action, days, agentId, orgId };
   }
+  if (body.action === 'notificationSync' || body.action === 'notificationMarkAllRead') {
+    return { action: body.action, orgId: body.orgId == null ? null : organizationId(body.orgId) };
+  }
+  if (body.action === 'notificationMarkRead' || body.action === 'notificationDelete') {
+    const id = text(body.id, 'Notificación', 120);
+    if (!/^[a-zA-Z0-9_-]{1,120}$/.test(id)) throw new InputError('Notificación inválida.');
+    return { action: body.action, id, orgId: body.orgId == null ? null : organizationId(body.orgId) };
+  }
   if (body.action === 'saveEntity') {
     const collection = text(body.collection, 'Colección', 40);
     if (!['agents', 'automations', 'integrations', ...CRM_COLLECTIONS].includes(collection)) throw new InputError('Colección inválida.');

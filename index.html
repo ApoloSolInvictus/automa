@@ -650,7 +650,8 @@
             </div>
             <div class="db-nav">
                <div class="db-nav-section">Main</div>
-               <button class="db-nl active" onclick="dbNav('overview',this)"><i class="fa-solid fa-gauge-high"></i> Overview</button>
+                <button class="db-nl active" onclick="dbNav('overview',this)"><i class="fa-solid fa-gauge-high"></i> Overview</button>
+                <button class="db-nl" data-notification-nav onclick="dbNav('notifications',this)"><i class="fa-regular fa-bell"></i> Notifications <span data-notification-nav-badge class="db-badge" style="background:#f87171;display:none">0</span></button>
                <button class="db-nl" onclick="dbNav('crm',this)"><i class="fa-solid fa-address-book"></i> CRM <span class="db-badge" style="background:#34d399">New</span></button>
                <button class="db-nl" onclick="dbNav('agents',this)"><i class="fa-solid fa-robot"></i> AI Agents <span class="db-badge">4</span></button>
                <button class="db-nl" onclick="dbNav('chat',this)"><i class="fa-regular fa-comments"></i> AI Chat <span class="db-badge" style="background:#34d399">Live</span></button>
@@ -688,74 +689,19 @@
                   <button class="boc d-flex align-items-center justify-content-center" id="bellBtn" style="width:38px;height:38px;padding:0;border-radius:12px" onclick="toggleNotif(event)">
                   <i class="fa-regular fa-bell"></i>
                   </button>
-                  <span id="notifBadge" style="position:absolute;top:5px;right:5px;width:9px;height:9px;border-radius:50%;background:#f87171;border:2px solid var(--bg)"></span>
+                   <span id="notifBadge" style="position:absolute;top:-3px;right:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:100px;background:#f87171;border:2px solid var(--bg);color:#fff;font-size:.62rem;font-weight:700;line-height:13px;text-align:center;display:none">0</span>
                   <!-- Notification Dropdown -->
                   <div class="db-dropdown" id="notifDropdown" style="right:0">
                      <div class="dd-header">
-                        <div class="dd-header-title"><i class="fa-regular fa-bell me-2" style="color:var(--pur)"></i>Notifications <span id="unreadCount" style="background:rgba(248,113,113,.15);color:#f87171;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:100px;margin-left:6px">4 new</span></div>
+                        <div class="dd-header-title"><i class="fa-regular fa-bell me-2" style="color:var(--pur)"></i>Notifications <span id="unreadCount" style="background:rgba(139,92,246,.1);color:#a78bfa;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:100px;margin-left:6px">0 new</span></div>
                         <div class="d-flex gap-2">
                            <button class="dd-close" onclick="markAllRead()" title="Mark all read" style="width:auto;padding:4px 10px;font-size:.72rem;color:var(--pur);border-color:rgba(139,92,246,.3)">Mark all read</button>
                            <button class="dd-close" onclick="toggleNotif(event)"><i class="fa-solid fa-xmark"></i></button>
                         </div>
                      </div>
-                     <div class="dd-body" id="notifList">
-                        <div class="notif-item notif-unread d-flex gap-3 mb-2">
-                           <div class="notif-ico" style="background:rgba(248,113,113,.12)"><i class="fa-solid fa-triangle-exclamation" style="color:#f87171;font-size:.9rem"></i></div>
-                           <div style="flex:1">
-                              <div style="font-size:.85rem;font-weight:600;margin-bottom:3px">Customer queue needs attention</div>
-                              <div style="font-size:.78rem;color:var(--tx2)">The support workflow has requests waiting for a human decision.</div>
-                              <div style="font-size:.7rem;color:var(--tx3);margin-top:5px"><i class="fa-regular fa-clock me-1"></i>2 minutes ago</div>
-                           </div>
-                           <div class="notif-dot"></div>
-                        </div>
-                        <div class="notif-item notif-unread d-flex gap-3 mb-2">
-                           <div class="notif-ico" style="background:rgba(52,211,153,.12)"><i class="fa-solid fa-chart-line" style="color:#34d399;font-size:.9rem"></i></div>
-                           <div style="flex:1">
-                              <div style="font-size:.85rem;font-weight:600;margin-bottom:3px">Daily workflow goal reached</div>
-                              <div style="font-size:.78rem;color:var(--tx2)">Automa completed the customer requests assigned for today.</div>
-                              <div style="font-size:.7rem;color:var(--tx3);margin-top:5px"><i class="fa-regular fa-clock me-1"></i>18 minutes ago</div>
-                           </div>
-                           <div class="notif-dot"></div>
-                        </div>
-                        <div class="notif-item notif-unread d-flex gap-3 mb-2">
-                           <div class="notif-ico" style="background:rgba(139,92,246,.12)"><i class="fa-brands fa-slack" style="color:#a78bfa;font-size:.9rem"></i></div>
-                           <div style="flex:1">
-                              <div style="font-size:.85rem;font-weight:600;margin-bottom:3px">Business channel updated</div>
-                              <div style="font-size:.78rem;color:var(--tx2)">New customer conversations are ready for the assigned Automa agent.</div>
-                              <div style="font-size:.7rem;color:var(--tx3);margin-top:5px"><i class="fa-regular fa-clock me-1"></i>1 hour ago</div>
-                           </div>
-                           <div class="notif-dot"></div>
-                        </div>
-                        <div class="notif-item notif-unread d-flex gap-3 mb-2">
-                           <div class="notif-ico" style="background:rgba(245,158,11,.1)"><i class="fa-solid fa-robot" style="color:#fbbf24;font-size:.9rem"></i></div>
-                           <div style="flex:1">
-                              <div style="font-size:.85rem;font-weight:600;margin-bottom:3px">Agent review recommended</div>
-                              <div style="font-size:.78rem;color:var(--tx2)">Review recent answers and refine the instructions for the customer support agent.</div>
-                              <div style="font-size:.7rem;color:var(--tx3);margin-top:5px"><i class="fa-regular fa-clock me-1"></i>3 hours ago</div>
-                           </div>
-                           <div class="notif-dot"></div>
-                        </div>
-                        <div class="notif-item d-flex gap-3 mb-2">
-                           <div class="notif-ico" style="background:rgba(59,130,246,.1)"><i class="fa-solid fa-file-lines" style="color:#60a5fa;font-size:.9rem"></i></div>
-                           <div style="flex:1">
-                              <div style="font-size:.85rem;font-weight:600;margin-bottom:3px">Weekly report ready</div>
-                              <div style="font-size:.78rem;color:var(--tx2)">Your performance report for last week is ready to download.</div>
-                              <div style="font-size:.7rem;color:var(--tx3);margin-top:5px"><i class="fa-regular fa-clock me-1"></i>Yesterday</div>
-                           </div>
-                           <div class="notif-dot read"></div>
-                        </div>
-                        <div class="notif-item d-flex gap-3 mb-2">
-                           <div class="notif-ico" style="background:rgba(52,211,153,.1)"><i class="fa-solid fa-plug" style="color:#34d399;font-size:.9rem"></i></div>
-                           <div style="flex:1">
-                              <div style="font-size:.85rem;font-weight:600;margin-bottom:3px">Contract follow-up ready</div>
-                              <div style="font-size:.78rem;color:var(--tx2)">The next contract action has been prepared for team review.</div>
-                              <div style="font-size:.7rem;color:var(--tx3);margin-top:5px"><i class="fa-regular fa-clock me-1"></i>2 days ago</div>
-                           </div>
-                           <div class="notif-dot read"></div>
-                        </div>
-                     </div>
+                     <div class="dd-body" id="notifList"><div class="crm-empty">No notifications for this workspace yet.</div></div>
                      <div style="padding:12px 14px;border-top:1px solid var(--bd);text-align:center">
-                        <button class="boc btn w-100 py-2" style="font-size:.82rem;border-radius:10px"><i class="fa-solid fa-list me-1"></i>View All Notifications</button>
+                        <button class="boc btn w-100 py-2" style="font-size:.82rem;border-radius:10px" data-notification-view-all><i class="fa-solid fa-list me-1"></i>View all notifications</button>
                      </div>
                   </div>
                </div>
@@ -902,6 +848,26 @@
                   </div>
                </div>
                <!-- -- CRM WORKSPACE -- -->
+               <div class="db-section" id="sec-notifications">
+                  <div class="d-flex align-items-start justify-content-between gap-3 mb-4 flex-wrap">
+                     <div>
+                        <h4 style="font-size:1.4rem;font-weight:700;margin-bottom:4px"><i class="fa-regular fa-bell me-2" style="color:var(--pur)"></i>Notifications</h4>
+                        <p style="font-size:.875rem;color:var(--tx3);margin:0">Track approvals, failed runs, pending CRM tasks and integration issues in this workspace.</p>
+                     </div>
+                     <div class="d-flex gap-2 flex-wrap">
+                        <button class="boc btn px-3 py-2" data-notification-mark-all><i class="fa-solid fa-check-double me-1"></i>Mark all read</button>
+                        <button class="boc btn px-3 py-2" data-notification-delete-read><i class="fa-regular fa-trash-can me-1"></i>Delete read</button>
+                     </div>
+                  </div>
+                  <div class="d-flex align-items-center justify-content-between gap-3 mb-3 flex-wrap">
+                     <div style="font-size:.82rem;color:var(--tx2)"><strong data-notification-total>0</strong> total · <strong data-notification-unread>0</strong> unread</div>
+                     <div class="d-flex gap-2">
+                        <button class="bgrd btn py-1 px-3" style="font-size:.75rem" data-notification-filter="all">All</button>
+                        <button class="boc btn py-1 px-3" style="font-size:.75rem" data-notification-filter="unread">Unread</button>
+                     </div>
+                  </div>
+                  <div id="notificationPageList" class="d-flex flex-column gap-2"><div class="crm-empty">No notifications for this workspace yet.</div></div>
+               </div>
                <div class="db-section" id="sec-crm">
                   <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
                      <div>

@@ -185,6 +185,7 @@ function updateStats(name, rows) {
 function resetStats() {
   Object.keys(overviewRows).forEach(name => delete overviewRows[name]);
   agentMetrics = null;
+  resetNotifications();
   renderOverviewStats();
   renderAnalyticsAgentList({ agents: [] }); renderAnalyticsChannelList({}); renderAnalyticsCrmSnapshot(); renderAnalyticsWorkflowList();
   window.updateAnalyticsChart?.([]);
@@ -205,6 +206,67 @@ function renderActivity() {
     const time = document.createElement('span'); time.style.cssText = 'margin-left:auto;color:var(--tx3);white-space:nowrap'; time.textContent = overviewTimeLabel(overviewTimestamp(row)); item.append(dot, text, time); return item;
   }));
 }
+let notificationRows = [], notificationFilter = 'all';
+const notificationStyles = Object.freeze({
+  critical: { icon: 'fa-triangle-exclamation', color: '#f87171', background: 'rgba(248,113,113,.12)' },
+  warning: { icon: 'fa-clock', color: '#fbbf24', background: 'rgba(245,158,11,.1)' },
+  success: { icon: 'fa-circle-check', color: '#34d399', background: 'rgba(52,211,153,.12)' },
+  info: { icon: 'fa-circle-info', color: '#60a5fa', background: 'rgba(59,130,246,.1)' }
+});
+function notificationRowsForView() {
+  return notificationRows.filter(row => notificationFilter !== 'unread' || row.read !== true);
+}
+function updateNotificationCounters() {
+  const unread = notificationRows.filter(row => row.read !== true).length;
+  const count = document.querySelector('#unreadCount'); if (count) { count.textContent = `${unread} new`; count.style.background = unread ? 'rgba(248,113,113,.15)' : 'rgba(139,92,246,.1)'; count.style.color = unread ? '#f87171' : '#a78bfa'; }
+  const badge = $('notifBadge'); if (badge) { badge.textContent = unread > 99 ? '99+' : String(unread); badge.style.display = unread ? 'block' : 'none'; }
+  document.querySelectorAll('[data-notification-nav-badge]').forEach(item => { item.textContent = unread > 99 ? '99+' : String(unread); item.style.display = unread ? 'inline-flex' : 'none'; });
+  document.querySelector('[data-notification-total]')?.replaceChildren(document.createTextNode(String(notificationRows.length)));
+  document.querySelector('[data-notification-unread]')?.replaceChildren(document.createTextNode(String(unread)));
+}
+function notificationActionButton(label, icon, handler, disabled = false) {
+  const button = document.createElement('button'); button.className = 'boc btn py-1 px-2'; button.style.cssText = 'font-size:.7rem;border-radius:8px'; button.innerHTML = `<i class="fa-solid ${icon} me-1"></i>${label}`; button.disabled = disabled; button.onclick = event => { event.stopPropagation(); handler(); }; return button;
+}
+function notificationSection(row) {
+  const section = row.section || (row.sourceType === 'integration' ? 'integrations' : row.sourceType === 'task' ? 'crm' : 'automations');
+  return section;
+}
+function openNotificationSource(row) {
+  if (typeof window.dbNav === 'function') window.dbNav(section, button);
+  document.querySelector('#notifDropdown')?.classList.remove('open');
+}
+async function markNotificationRead(id) {
+  try { await callBusiness({ action: 'notificationMarkRead', ...workspacePayload(), id }); } catch (error) { showCrmNotice('Notifications', error.message || 'The notification could not be marked as read.'); }
+}
+async function deleteNotification(id) {
+  try { await callBusiness({ action: 'notificationDelete', ...workspacePayload(), id }); } catch (error) { showCrmNotice('Notifications', error.message || 'The notification could not be deleted.'); }
+}
+function renderNotificationCard(row, compact = false) {
+  const style = notificationStyles[row.severity] || notificationStyles.info;
+  const item = document.createElement('div'); item.className = `notif-item d-flex gap-3 ${row.read === true ? '' : 'notif-unread'}`; item.style.cssText = compact ? 'margin-bottom:8px;cursor:pointer' : 'margin-bottom:8px;cursor:pointer;padding:14px 16px'; item.onclick = () => openNotificationSource(row);
+  const icon = document.createElement('div'); icon.className = 'notif-ico'; icon.style.background = style.background; icon.innerHTML = `<i class="fa-solid ${style.icon}" style="color:${style.color};font-size:.9rem"></i>`;
+  const content = document.createElement('div'); content.style.cssText = 'flex:1;min-width:0';
+  const title = document.createElement('div'); title.style.cssText = 'font-size:.85rem;font-weight:600;margin-bottom:3px'; title.textContent = row.title || 'Automa notification';
+  const message = document.createElement('div'); message.style.cssText = 'font-size:.78rem;color:var(--tx2);line-height:1.45'; message.textContent = row.message || 'Review this workspace item.';
+  const meta = document.createElement('div'); meta.style.cssText = 'font-size:.7rem;color:var(--tx3);margin-top:6px'; meta.innerHTML = `<i class="fa-regular fa-clock me-1"></i>${overviewTimeLabel(overviewTimestamp(row))}${row.read === true ? ' · Read' : ' · New'}`;
+  content.append(title, message, meta);
+  const actions = document.createElement('div'); actions.className = 'd-flex align-items-start gap-1';
+  if (row.read !== true) actions.append(notificationActionButton('Read', 'fa-check', () => markNotificationRead(row.id)));
+  actions.append(notificationActionButton('', 'fa-trash-can', () => deleteNotification(row.id)));
+  item.append(icon, content, actions); return item;
+}
+function renderNotifications(rows) {
+  notificationRows = rows.slice().sort((a, b) => overviewTimestamp(b) - overviewTimestamp(a));
+  updateNotificationCounters();
+  const dropdown = $('notifList'); if (dropdown) { const recent = notificationRows.slice(0, 5); dropdown.replaceChildren(...(recent.length ? recent.map(row => renderNotificationCard(row, true)) : [Object.assign(document.createElement('div'), { className: 'crm-empty', textContent: 'No notifications for this workspace yet.' })])); }
+  const page = $('notificationPageList'); if (page) { const visible = notificationRowsForView(); page.replaceChildren(...(visible.length ? visible.map(row => renderNotificationCard(row)) : [Object.assign(document.createElement('div'), { className: 'crm-empty', textContent: notificationFilter === 'unread' ? 'No unread notifications.' : 'No notifications for this workspace yet.' })])); }
+}
+async function markAllNotificationsRead() {
+  if (!notificationRows.some(row => row.read !== true)) return;
+  try { await callBusiness({ action: 'notificationMarkAllRead', ...workspacePayload() }); } catch (error) { showCrmNotice('Notifications', error.message || 'Notifications could not be updated.'); }
+}
+window.markAllRead = markAllNotificationsRead;
+function resetNotifications() { notificationRows = []; notificationFilter = 'all'; renderNotifications([]); }
 function renderEntities(sectionId, rows) {
   const host = document.querySelector(`#sec-${sectionId}`); if (!host) return;
   if (sectionId === 'automations') { renderAutomationRows(rows); return; }
@@ -643,7 +705,6 @@ function openAutomationTest(automation = {}, id) {
   });
 }
 window.openAutomationPlaybook = function openAutomationPlaybook() {
-  const button = document.querySelector('.db-nl[onclick*=playbook]');
   if (typeof window.dbNav === 'function') window.dbNav('playbook', button);
 };
 window.openAutomationBlueprint = function openAutomationBlueprint(key) {
@@ -1085,7 +1146,7 @@ async function loadWorkspaces(user, requestedId = null) {
   try { const result = await callBusiness({ action: 'organizationList' }); organizations = result.organizations || []; } catch (error) { console.warn('Organizations unavailable', error.message); }
   workspaceOptions = [{ id: null, name: 'Personal workspace', color: DEFAULT_WORKSPACE_COLOR, role: 'owner', members: [], pendingInvites: [] }, ...organizations.map(option => ({ ...option, color: normalizedWorkspaceColor(option.color) }))];
   workspace = workspaceOptions.find(option => option.id === requestedId) || workspaceOptions.find(option => option.id === workspace.id) || workspaceOptions[0];
-  updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(user); await Promise.all([loadGmailStatus(), loadGoogleStatus(), loadAgentMetrics()]);
+  updateWorkspaceUi(); resetCrmState(); stopSubscriptions(); subscribe(user); await Promise.all([loadGmailStatus(), loadGoogleStatus(), loadAgentMetrics(), callBusiness({ action: 'notificationSync', ...workspacePayload() }).catch(error => console.warn('Notification sync unavailable', error.message))]);
   const gmailResult = new URLSearchParams(window.location.search).get('gmail');
   if (gmailResult) {
     window.history.replaceState({}, '', window.location.pathname + window.location.hash);
@@ -1102,7 +1163,15 @@ function wireWorkspace() {
   const section = id => document.querySelector(`#sec-${id}`);
   const add = (id, label, fields, collection) => { const btn = [...(section(id)?.querySelectorAll('button') || [])].find(b => b.textContent.includes(label)); btn?.addEventListener('click', () => modal(label, fields, data => callBusiness({ action: 'saveEntity', ...workspacePayload(), collection, data }))); };
   const deploy = [...(section('agents')?.querySelectorAll('button') || [])].find(b => b.textContent.includes('Deploy New Agent')); deploy?.addEventListener('click', () => openAgentEditor());
-  section('automations')?.querySelector('[data-create-automation]')?.addEventListener('click', () => window.openAutomationEditor());
+   section('automations')?.querySelector('[data-create-automation]')?.addEventListener('click', () => window.openAutomationEditor());
+   document.querySelector('[data-notification-view-all]')?.addEventListener('click', event => { event.stopPropagation(); document.querySelector('#notifDropdown')?.classList.remove('open'); window.dbNav?.('notifications', document.querySelector('[data-notification-nav]')); });
+   document.querySelector('[data-notification-mark-all]')?.addEventListener('click', markAllNotificationsRead);
+   document.querySelector('[data-notification-delete-read]')?.addEventListener('click', async () => {
+     const read = notificationRows.filter(row => row.read === true);
+     if (!read.length || !window.confirm(`Delete ${read.length} read notification${read.length === 1 ? '' : 's'}?`)) return;
+     await Promise.all(read.map(row => deleteNotification(row.id)));
+   });
+   document.querySelectorAll('[data-notification-filter]').forEach(button => button.addEventListener('click', () => { notificationFilter = button.dataset.notificationFilter || 'all'; document.querySelectorAll('[data-notification-filter]').forEach(item => item.className = item === button ? 'bgrd btn py-1 px-3' : 'boc btn py-1 px-3'); renderNotifications(notificationRows); }));
   document.querySelectorAll('[data-use-blueprint]').forEach(button => button.addEventListener('click', () => window.openAutomationBlueprint(button.dataset.useBlueprint)));
   document.querySelectorAll('[data-crm-action]').forEach(button => button.addEventListener('click', () => openCrmEditor({ company: 'companies', contact: 'contacts', opportunity: 'opportunities', activity: 'activities', contract: 'contracts', service: 'services' }[button.dataset.crmAction])));
   document.querySelectorAll('[data-crm-ai]').forEach(button => button.addEventListener('click', () => runCrmAssist(button.dataset.crmAi)));
@@ -1208,7 +1277,7 @@ function subscribe(user) {
     const stop = onSnapshot(sourceQuery, snap => { if (generation !== run) return; const rows = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })); updateStats(name, rows); callback(rows); }, error => { if (generation === run) console.warn(`${name} unavailable`, error.code); });
     stops.push(stop);
   };
-  watch('leads', () => renderActivity()); watch('tasks', () => renderActivity()); watch('runs', () => { renderActivity(); scheduleAgentMetricsRefresh(); });
+   watch('notifications', rows => renderNotifications(rows)); watch('leads', () => renderActivity()); watch('tasks', () => renderActivity()); watch('runs', () => { renderActivity(); scheduleAgentMetricsRefresh(); });
   watch('agents', rows => renderEntities('agents', rows)); watch('automations', rows => renderEntities('automations', rows)); watch('integrations', rows => renderEntities('integrations', rows));
    watch('companies', rows => { crmState.companies = rows; renderCrm(); renderActivity(); renderOverviewStats(); renderAnalyticsCrmSnapshot(); }); watch('contacts', rows => { crmState.contacts = rows; renderCrm(); renderActivity(); renderOverviewStats(); renderAnalyticsCrmSnapshot(); }); watch('opportunities', rows => { crmState.opportunities = rows; renderCrm(); renderActivity(); renderOverviewStats(); renderAnalyticsCrmSnapshot(); }); watch('activities', rows => { crmState.activities = rows; renderCrm(); renderActivity(); renderOverviewStats(); renderAnalyticsCrmSnapshot(); }); watch('contracts', rows => { crmState.contracts = rows; renderCrm(); renderActivity(); renderOverviewStats(); renderAnalyticsCrmSnapshot(); }); watch('services', rows => { crmState.services = rows; renderCrm(); renderActivity(); renderOverviewStats(); renderAnalyticsCrmSnapshot(); });
   wireWorkspace();

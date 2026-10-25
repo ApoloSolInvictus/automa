@@ -129,6 +129,70 @@ function workspaceRoot(db, uid, orgId = null) {
   return orgId ? db.collection('organizations').doc(orgId) : db.collection('users').doc(uid);
 }
 
+async function upsertNotification(db, root, FieldValue, id, data) {
+  const ref = root.collection('notifications').doc(id);
+  await db.runTransaction(async transaction => {
+    const current = await transaction.get(ref);
+    const stamp = FieldValue.serverTimestamp();
+    const payload = { ...data, updatedAt: stamp };
+    if (!current.exists) { payload.read = false; payload.createdAt = data.createdAt || stamp; }
+    transaction.set(ref, payload, { merge: true });
+  });
+}
+
+async function syncWorkspaceNotifications(db, root, FieldValue) {
+  const [automations, runs, integrations, tasks] = await Promise.all([
+    root.collection('automations').limit(200).get(),
+    root.collection('runs').limit(200).get(),
+    root.collection('integrations').limit(100).get(),
+    root.collection('tasks').limit(200).get()
+  ]);
+  let count = 0;
+  for (const doc of automations.docs) {
+    const row = doc.data() || {};
+    if (row.pendingApproval === true || row.pendingApproval === 'true' || row.lastRunStatus === 'pending_approval') {
+      await upsertNotification(db, root, FieldValue, `automation_${doc.id}_approval`, {
+        kind: 'approval', severity: 'warning', section: 'automations', sourceType: 'automation', sourceId: doc.id,
+        title: `Approval required: ${String(row.name || doc.id).slice(0, 120)}`,
+        message: 'An AI workflow prepared work that is waiting for your review before it can continue.'
+      }); count += 1;
+    }
+  }
+  for (const doc of runs.docs) {
+    const row = doc.data() || {};
+    if (row.status === 'failed' || row.success === false) {
+      await upsertNotification(db, root, FieldValue, `run_${doc.id}_failed`, {
+        kind: 'error', severity: 'critical', section: 'automations', sourceType: 'run', sourceId: doc.id,
+        title: `Workflow failed: ${String(row.automationName || row.agentName || row.automationId || 'Agent run').slice(0, 120)}`,
+        message: String(row.message || 'Review the workflow run and its integration settings.').slice(0, 300),
+        ...(row.createdAt ? { createdAt: row.createdAt } : {})
+      }); count += 1;
+    }
+  }
+  for (const doc of integrations.docs) {
+    const row = doc.data() || {};
+    const status = String(row.status || '').toLowerCase();
+    if (status === 'needs setup' || status === 'paused' || status === 'error' || status === 'unavailable') {
+      await upsertNotification(db, root, FieldValue, `integration_${doc.id}_attention`, {
+        kind: 'integration', severity: 'warning', section: 'integrations', sourceType: 'integration', sourceId: doc.id,
+        title: `${String(row.provider || doc.id).slice(0, 100)} needs attention`,
+        message: `This integration is ${row.status || 'not ready'}. Review its connection before using it in a workflow.`
+      }); count += 1;
+    }
+  }
+  for (const doc of tasks.docs) {
+    const row = doc.data() || {};
+    if (String(row.status || '').toLowerCase() === 'pending') {
+      await upsertNotification(db, root, FieldValue, `task_${doc.id}_pending`, {
+        kind: 'task', severity: 'info', section: 'crm', sourceType: 'task', sourceId: doc.id,
+        title: `Pending task: ${String(row.title || row.subject || doc.id).slice(0, 120)}`,
+        message: 'A CRM task is waiting for an owner to complete it.', ...(row.createdAt ? { createdAt: row.createdAt } : {})
+      }); count += 1;
+    }
+  }
+  return count;
+}
+
 const CRM_AGENT_COLLECTIONS = ['companies', 'contacts', 'opportunities', 'activities', 'contracts', 'services'];
 const CRM_AGENT_FIELDS = {
   companies: ['name', 'industry', 'status', 'owner'],
@@ -527,7 +591,7 @@ export default async function handler(req, res) {
     const root = cmd.orgId ? db.collection('organizations').doc(cmd.orgId) : db.collection('users').doc(user.uid);
     const membership = cmd.orgId ? await organizationAccess(db, cmd.orgId, user.uid) : null;
     if (cmd.orgId && !membership) return res.status(403).json({ error: 'You are not a member of this organization.', code: 'organization_forbidden' });
-    if (cmd.orgId && membership.role === 'viewer' && ['saveEntity', 'saveSettings', 'updateTask', 'createLead', 'runAutomation'].includes(cmd.action)) return res.status(403).json({ error: 'Viewer members have read-only access.', code: 'organization_read_only' });
+    if (cmd.orgId && membership.role === 'viewer' && ['saveEntity', 'saveSettings', 'updateTask', 'createLead', 'runAutomation', 'notificationSync', 'notificationMarkRead', 'notificationMarkAllRead', 'notificationDelete'].includes(cmd.action)) return res.status(403).json({ error: 'Viewer members have read-only access.', code: 'organization_read_only' });
     if (cmd.action === 'agentMetrics') {
       const metrics = await loadAgentMetrics(root, cmd.days);
       if (cmd.agentId) metrics.agents = metrics.agents.filter(agent => agent.id === cmd.agentId);
@@ -535,6 +599,29 @@ export default async function handler(req, res) {
     }
     const now = new Date();
     const stamp = FieldValue.serverTimestamp();
+    if (cmd.action === 'notificationSync') {
+      const count = await syncWorkspaceNotifications(db, root, FieldValue);
+      return res.status(200).json({ ok: true, count });
+    }
+    if (cmd.action === 'notificationMarkRead') {
+      const ref = root.collection('notifications').doc(cmd.id);
+      if (!(await ref.get()).exists) return res.status(404).json({ error: 'Notification not found.', code: 'notification_not_found' });
+      await ref.set({ read: true, readAt: stamp, updatedAt: stamp }, { merge: true });
+      return res.status(200).json({ ok: true, id: cmd.id });
+    }
+    if (cmd.action === 'notificationMarkAllRead') {
+      const snapshot = await root.collection('notifications').limit(500).get();
+      const batch = db.batch();
+      snapshot.docs.forEach(doc => batch.set(doc.ref, { read: true, readAt: stamp, updatedAt: stamp }, { merge: true }));
+      if (snapshot.docs.length) await batch.commit();
+      return res.status(200).json({ ok: true, count: snapshot.docs.length });
+    }
+    if (cmd.action === 'notificationDelete') {
+      const ref = root.collection('notifications').doc(cmd.id);
+      if (!(await ref.get()).exists) return res.status(404).json({ error: 'Notification not found.', code: 'notification_not_found' });
+      await ref.delete();
+      return res.status(200).json({ ok: true, id: cmd.id });
+    }
     if (cmd.action === 'saveSettings') {
       await root.collection('settings').doc('followUp').set({ enabled: cmd.enabled, hours: cmd.hours, updatedAt: stamp });
       return res.status(200).json({ ok: true });
@@ -594,11 +681,15 @@ export default async function handler(req, res) {
       const startedAt = Date.now();
       const result = await requestOpenAI({ message: cmd.message, history: [] }, { model, instructions });
       const completed = result.status === 200;
+      const approvalRequired = completed && automation.approvalMode === 'review';
       const stamp = FieldValue.serverTimestamp();
-      await automationRef.set({ runCount: FieldValue.increment(1), lastRunAt: stamp, lastRunStatus: completed ? 'completed' : 'failed', updatedAt: stamp }, { merge: true });
-      await root.collection('runs').add({ type: 'automation_run', automationId: cmd.automationId, automationName: workflow.name, status: completed ? 'completed' : 'failed', success: completed, message: completed ? 'Workflow preview completed' : 'Workflow preview failed', createdAt: stamp });
+      await automationRef.set({ runCount: FieldValue.increment(1), lastRunAt: stamp, lastRunStatus: approvalRequired ? 'pending_approval' : (completed ? 'completed' : 'failed'), pendingApproval: approvalRequired, updatedAt: stamp }, { merge: true });
+      const runRef = root.collection('runs').doc();
+      await runRef.set({ type: 'automation_run', automationId: cmd.automationId, automationName: workflow.name, status: completed ? 'completed' : 'failed', success: completed, approvalRequired, message: completed ? (approvalRequired ? 'Workflow preview completed and is waiting for approval' : 'Workflow preview completed') : 'Workflow preview failed', createdAt: stamp });
+      if (approvalRequired) await upsertNotification(db, root, FieldValue, `automation_${cmd.automationId}_approval`, { kind: 'approval', severity: 'warning', section: 'automations', sourceType: 'automation', sourceId: cmd.automationId, title: `Approval required: ${workflow.name}`, message: 'The AI workflow prepared a result that is waiting for your review before it can continue.' });
+      if (!completed) await upsertNotification(db, root, FieldValue, `run_${runRef.id}_failed`, { kind: 'error', severity: 'critical', section: 'automations', sourceType: 'run', sourceId: runRef.id, title: `Workflow failed: ${workflow.name}`, message: 'Review the workflow run and its integration settings.' });
       await recordAgentRun(root, FieldValue, { agentId: requestedAgentId, channel: 'automation', actorKey: `user:${user.uid}`, model, status: completed ? 'completed' : 'failed', success: completed, latencyMs: Date.now() - startedAt, inputChars: cmd.message.length, outputChars: typeof result.body?.reply === 'string' ? result.body.reply.length : 0, crmRecordCount: crm.count, errorCode: result.body?.code }).catch(error => console.warn('Automation metric could not be recorded', { code: error?.code || 'metrics_write_failed' }));
-      return res.status(result.status).json({ ...result.body, ok: completed, automationId: cmd.automationId, automation: workflow.name, preview: true, agent: agent.name || 'Automa' });
+      return res.status(result.status).json({ ...result.body, ok: completed, automationId: cmd.automationId, automation: workflow.name, preview: true, approvalRequired, agent: agent.name || 'Automa' });
     }
     if (cmd.action === 'runAgent') {
       const ref = root.collection('agents').doc(cmd.agentId);

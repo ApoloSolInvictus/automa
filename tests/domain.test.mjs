@@ -57,6 +57,14 @@ test('validates bounded agent metrics requests', () => {
  assert.throws(() => parseCommand({ action: 'agentMetrics', days: 0 }));
  assert.throws(() => parseCommand({ action: 'agentMetrics', days: 91 }));
 });
+test('validates notification inbox actions and workspace scoping', () => {
+ const sync = parseCommand({ action: 'notificationSync', orgId: 'acme_ops' });
+ assert.deepEqual(sync, { action: 'notificationSync', orgId: 'acme_ops' });
+ const read = parseCommand({ action: 'notificationMarkRead', id: 'automation_workflow_approval', orgId: 'acme_ops' });
+ assert.equal(read.id, 'automation_workflow_approval');
+ assert.deepEqual(parseCommand({ action: 'notificationMarkAllRead' }), { action: 'notificationMarkAllRead', orgId: null });
+ assert.throws(() => parseCommand({ action: 'notificationDelete', id: '../unsafe' }));
+});
 test('validates CRM records and bounded CRM copilot requests', () => {
  const company = parseCommand({ action:'saveEntity', collection:'companies', data:{ name:'Acme', industry:'Services', website:'https://acme.example', size:'small', status:'active' } });
  assert.equal(company.collection, 'companies'); assert.equal(company.data.name, 'Acme');
